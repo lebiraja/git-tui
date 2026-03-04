@@ -170,6 +170,13 @@ DataTable > .datatable--odd-row {
     padding: 1 1;
 }
 
+#tree-content {
+    height: 1fr;
+    background: #1a1b26;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
 /* ---------- Branch list ---------- */
 #branch-list {
     background: #1a1b26;

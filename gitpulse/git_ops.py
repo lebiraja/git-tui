@@ -419,3 +419,81 @@ def get_tags(path: Path, n: int = 15) -> list[TagInfo]:
     # Sort by date descending, take first n
     tags.sort(key=lambda t: t.date, reverse=True)
     return tags[:n]
+
+
+def get_file_tree(path: Path) -> "rich.tree.Tree":
+    """
+    Build a Rich Tree representing the repository's tracked file structure.
+
+    Uses `git ls-files` to get only files tracked by git (respects .gitignore).
+    Directories are shown in blue, files in the default colour.
+
+    Args:
+        path: Absolute path to the repository root.
+
+    Returns:
+        A rich.tree.Tree object ready to be rendered in a Static widget.
+    """
+    from rich.tree import Tree as RichTree
+    from rich.text import Text
+
+    repo = _open_repo(path)
+
+    # Get all tracked files as relative paths
+    try:
+        ls_output = repo.git.ls_files()
+        file_paths = [p for p in ls_output.splitlines() if p.strip()]
+    except Exception:
+        file_paths = []
+
+    # Build a nested dict tree structure
+    # e.g. {"src": {"main.py": None, "utils.py": None}, "README.md": None}
+    def insert(tree_dict: dict, parts: list[str]) -> None:
+        if not parts:
+            return
+        head, *tail = parts
+        if tail:
+            tree_dict.setdefault(head, {})
+            if isinstance(tree_dict[head], dict):
+                insert(tree_dict[head], tail)
+        else:
+            tree_dict[head] = None  # Leaf = file
+
+    root_dict: dict = {}
+    for fp in sorted(file_paths):
+        parts = fp.replace("\\", "/").split("/")
+        insert(root_dict, parts)
+
+    # Render the dict structure into a Rich Tree
+    repo_name = path.name
+    rich_tree = RichTree(
+        f"[bold #7aa2f7]📁 {repo_name}[/]",
+        guide_style="#3b4261",
+    )
+
+    def build_tree(node: "RichTree", d: dict) -> None:
+        # Sort: directories first, then files
+        dirs = sorted(k for k, v in d.items() if isinstance(v, dict))
+        files = sorted(k for k, v in d.items() if v is None)
+
+        for name in dirs:
+            branch = node.add(f"[bold #bb9af7]📂 {name}[/]")
+            build_tree(branch, d[name])
+
+        for name in files:
+            # Color-code by extension
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            if ext in ("py", "js", "ts", "go", "rs", "c", "cpp", "java"):
+                label = f"[#9ece6a]  {name}[/]"
+            elif ext in ("md", "rst", "txt"):
+                label = f"[#e0af68]  {name}[/]"
+            elif ext in ("json", "yaml", "yml", "toml", "ini", "cfg", "env"):
+                label = f"[#7dcfff]  {name}[/]"
+            elif ext in ("sh", "bash", "zsh"):
+                label = f"[#f7768e]  {name}[/]"
+            else:
+                label = f"[#c0caf5]  {name}[/]"
+            node.add(label)
+
+    build_tree(rich_tree, root_dict)
+    return rich_tree

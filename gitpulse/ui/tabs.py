@@ -32,6 +32,7 @@ from git_ops import (
     get_stashes,
     get_remotes,
     get_tags,
+    get_file_tree,
     relative_time,
     BranchInfo,
     RepoInfo,
@@ -100,6 +101,7 @@ class MainPanel(Static):
             "🌿 Branches",
             "🌐 Remotes",
             "🏷️ Tags",
+            "🌲 Tree",
         ):
             # ── Status Tab ──
             with TabPane("📋 Status", id="tab-status"):
@@ -137,6 +139,14 @@ class MainPanel(Static):
             with TabPane("🏷️ Tags", id="tab-tags"):
                 yield DataTable(id="tags-table")
 
+            # ── Tree Tab ──
+            with TabPane("🌲 Tree", id="tab-tree"):
+                yield Static(
+                    "[dim italic]← Select a repository to view structure[/]",
+                    id="tree-content",
+                    markup=True,
+                )
+
     def on_mount(self) -> None:
         """Set up DataTable columns."""
         # Commits table
@@ -165,6 +175,7 @@ class MainPanel(Static):
         self._load_branches(repo_path)
         self._load_remotes(repo_path)
         self._load_tags(repo_path)
+        self._load_tree(repo_path)
 
     # -----------------------------------------------------------------
     # Tab loaders
@@ -332,6 +343,16 @@ class MainPanel(Static):
     # -----------------------------------------------------------------
     # Events
     # -----------------------------------------------------------------
+
+    def _load_tree(self, repo_path: Path) -> None:
+        """Populate the Tree tab with the repo's tracked file hierarchy."""
+        content = self.query_one("#tree-content", Static)
+        content.remove_class("empty-message")
+        try:
+            tree = get_file_tree(repo_path)
+            content.update(tree)
+        except Exception as exc:
+            content.update(f"[dim italic]Error building tree: {exc}[/]")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Handle Enter key on a branch item."""

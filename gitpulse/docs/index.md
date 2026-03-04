@@ -8,6 +8,7 @@ Welcome to the **GitPulse** developer documentation. GitPulse is a terminal-base
 
 | Document | Description |
 |---|---|
+| [installation.md](./installation.md) | One-command installer, pyproject.toml setup, how dual-mode imports work |
 | [architecture.md](./architecture.md) | System architecture, data flow, and module relationships |
 | [api_reference.md](./api_reference.md) | Full reference for every data class and public function in `git_ops.py` and `scanner.py` |
 | [ui_components.md](./ui_components.md) | Textual widget guide — sidebar, tabs, messages, and events |

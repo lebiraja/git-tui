@@ -17,16 +17,22 @@ from textual.binding import Binding
 from textual.widgets import Header, Footer
 from textual.containers import Horizontal
 
-# Ensure the gitpulse package root is on sys.path so local imports work
-# when running `python main.py` directly from the gitpulse/ directory.
-_THIS_DIR = Path(__file__).resolve().parent
-if str(_THIS_DIR) not in sys.path:
-    sys.path.insert(0, str(_THIS_DIR))
-
-from scanner import scan_repos
-from git_ops import get_repo_info, switch_branch, RepoInfo
-from ui.sidebar import RepoSidebar
-from ui.tabs import MainPanel
+# Support both installed-package imports (gitpulse.scanner) and
+# direct execution (python main.py) by trying relative first.
+try:
+    from gitpulse.scanner import scan_repos
+    from gitpulse.git_ops import get_repo_info, switch_branch, RepoInfo
+    from gitpulse.ui.sidebar import RepoSidebar
+    from gitpulse.ui.tabs import MainPanel
+except ImportError:
+    # Running directly: python main.py
+    _THIS_DIR = Path(__file__).resolve().parent
+    if str(_THIS_DIR) not in sys.path:
+        sys.path.insert(0, str(_THIS_DIR))
+    from scanner import scan_repos
+    from git_ops import get_repo_info, switch_branch, RepoInfo
+    from ui.sidebar import RepoSidebar
+    from ui.tabs import MainPanel
 
 
 class GitPulseApp(App):
@@ -38,7 +44,7 @@ class GitPulseApp(App):
     Repos are sorted by most recent commit (most active first).
     """
 
-    CSS_PATH = "ui/styles.tcss"
+    CSS_PATH = str(Path(__file__).parent / "ui" / "styles.tcss")
 
     TITLE = "GitPulse"
     SUB_TITLE = "Git Repo Dashboard"
@@ -191,7 +197,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Entry point."""
+    """Entry point — called by both `python main.py` and the `gitpulse` command."""
     args = parse_args()
     root = Path(args.root).expanduser().resolve()
 

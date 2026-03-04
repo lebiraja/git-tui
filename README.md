@@ -44,6 +44,7 @@ gitpulse --root .                 # scans current directory
   - **🌿 Branches** — All local branches, press Enter to switch
   - **🌐 Remotes** — Remote URLs with ahead/behind sync status
   - **🏷️ Tags** — Recent tags with date and tagger info
+  - **🌲 Tree** — Visual file hierarchy of all tracked files
 
 ## Keybindings
 

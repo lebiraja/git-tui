@@ -16,9 +16,9 @@ Screen {
 }
 
 #sidebar-container {
-    width: 32;
-    min-width: 28;
-    max-width: 44;
+    width: 36;
+    min-width: 30;
+    max-width: 50;
     background: #16161e;
     border-right: vkey #3b4261;
 }
@@ -39,6 +39,22 @@ Screen {
     background: #1e2030;
     border-bottom: heavy #3b4261;
     padding: 0 1;
+}
+
+/* Search input */
+#search-input {
+    dock: top;
+    width: 100%;
+    height: 3;
+    margin: 0;
+    padding: 0 1;
+    background: #1e2030;
+    color: #c0caf5;
+    border-bottom: solid #3b4261;
+}
+
+#search-input:focus {
+    border-bottom: solid #7aa2f7;
 }
 
 #repo-list {
@@ -90,8 +106,8 @@ Tabs {
 Tab {
     color: #565f89;
     background: #1e2030;
-    padding: 0 3;
-    margin: 0 1;
+    padding: 0 2;
+    margin: 0 0;
 }
 
 Tab:hover {
@@ -109,7 +125,7 @@ Underline {
     color: #7aa2f7;
 }
 
-/* ---------- DataTable (Commits) ---------- */
+/* ---------- DataTable (Commits, Tags) ---------- */
 DataTable {
     background: #1a1b26;
     height: 1fr;
@@ -134,7 +150,7 @@ DataTable > .datatable--odd-row {
     background: #1e2030;
 }
 
-/* ---------- Status / Diff panels ---------- */
+/* ---------- Status / Diff / Remotes panels ---------- */
 #status-content {
     height: 1fr;
     background: #1a1b26;
@@ -146,6 +162,12 @@ DataTable > .datatable--odd-row {
     background: #1a1b26;
     padding: 0 1;
     overflow-y: auto;
+}
+
+#remotes-content {
+    height: 1fr;
+    background: #1a1b26;
+    padding: 1 1;
 }
 
 /* ---------- Branch list ---------- */

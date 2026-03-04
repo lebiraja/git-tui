@@ -7,26 +7,34 @@ Built with **Python**, **Textual**, **Rich**, and **GitPython**.
 ## Features
 
 - **Repo Discovery** — Recursively scans a configurable root directory for `.git` repos
-- **Status Badges** — Color-coded: 🟢 CLEAN / 🟡 MODIFIED / 🔴 UNTRACKED
-- **Tabbed Main Panel** — Status, Commits, Diff (syntax-highlighted), and Branches
-- **Branch Switching** — Press `Enter` on any branch to check it out
-- **Keyboard-driven** — Full keyboard navigation
+- **Sorted by Activity** — Repos ordered by most recent commit date
+- **Status Badges** — Color-coded with file counts: 🟢 CLEAN / 🟡 MODIFIED (3) / 🔴 UNTRACKED (2)
+- **Relative Time** — "2h ago", "3d ago" shown next to each repo
+- **Search/Filter** — Press `/` to filter repos by name
+- **Tabbed Main Panel**:
+  - **📋 Status** — Repo summary header, staged/unstaged/untracked files with icons, stash list
+  - **📝 Commits** — Last 10 commits with diff stats (files changed, insertions, deletions)
+  - **🔀 Diff** — Syntax-highlighted uncommitted changes
+  - **🌿 Branches** — All local branches, press Enter to switch
+  - **🌐 Remotes** — Remote URLs with ahead/behind sync status
+  - **🏷️ Tags** — Recent tags with date and tagger info
 
 ## Installation
 
 ```bash
 cd gitpulse
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
 ## Usage
 
 ```bash
 # Scan ~/projects (default)
-python main.py
+.venv/bin/python main.py
 
 # Scan a custom directory
-python main.py --root /path/to/your/repos
+.venv/bin/python main.py --root /path/to/your/repos
 ```
 
 ## Keybindings
@@ -34,6 +42,8 @@ python main.py --root /path/to/your/repos
 | Key              | Action                         |
 | ---------------- | ------------------------------ |
 | `↑` / `↓`       | Navigate repo list             |
+| `/`              | Focus search/filter            |
+| `Escape`         | Clear search                   |
 | `Tab`            | Next focus area                |
 | `Shift+Tab`      | Previous focus area            |
 | `Enter`          | Switch branch (Branches tab)   |
@@ -44,13 +54,13 @@ python main.py --root /path/to/your/repos
 
 ```
 gitpulse/
-├── main.py          # Entry point, launches Textual app
+├── main.py          # Entry point, app assembly, keybindings
 ├── scanner.py       # Recursive repo discovery logic
-├── git_ops.py       # All git operations (status, commits, diff, branches)
+├── git_ops.py       # Git operations (status, commits, diff, branches, stash, remotes, tags)
 ├── ui/
-│   ├── sidebar.py   # Repo list widget
-│   ├── tabs.py      # Main panel tabs
-│   └── styles.tcss  # Textual CSS styles
+│   ├── sidebar.py   # Repo list widget with search
+│   ├── tabs.py      # Main panel tabs (Status, Commits, Diff, Branches, Remotes, Tags)
+│   └── styles.tcss  # Textual CSS styles (Tokyo Night theme)
 ├── requirements.txt
 └── README.md
 ```

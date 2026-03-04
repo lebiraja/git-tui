@@ -2,32 +2,34 @@
 sidebar.py — Repo list sidebar widget for GitPulse.
 
 Displays all discovered repositories in a scrollable ListView with
-color-coded status badges and branch names, rendered using Rich markup
-inside a single Static widget per row for reliable layout.
+color-coded status badges, branch names, relative time, and file counts.
+Includes a search/filter input at the top.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from rich.text import Text
-
 from textual.app import ComposeResult
 from textual.message import Message
-from textual.widgets import Static, ListView, ListItem
+from textual.widgets import Static, ListView, ListItem, Input
 
-from git_ops import RepoInfo, RepoStatus
+from git_ops import RepoInfo, RepoStatus, relative_time
 
 
 # ---------------------------------------------------------------------------
-# Badge styles  (Rich markup)
+# Badge markup (Rich)
 # ---------------------------------------------------------------------------
 
-_BADGE_MARKUP = {
-    RepoStatus.CLEAN:     "[bold white on #2d7d46] ● CLEAN [/]",
-    RepoStatus.MODIFIED:  "[bold #1a1b26 on #e0af68] ● MODIFIED [/]",
-    RepoStatus.UNTRACKED: "[bold white on #db4b4b] ● UNTRACKED [/]",
-}
+def _make_badge(info: RepoInfo) -> str:
+    """Build a Rich markup badge string with optional file count."""
+    count = info.modified_count
+    if info.status == RepoStatus.CLEAN:
+        return "[bold white on #2d7d46] ✓ CLEAN [/]"
+    elif info.status == RepoStatus.MODIFIED:
+        label = f" ✎ MODIFIED ({count}) " if count else " ✎ MODIFIED "
+        return f"[bold #1a1b26 on #e0af68]{label}[/]"
+    else:  # UNTRACKED
+        label = f" ? UNTRACKED ({count}) " if count else " ? UNTRACKED "
+        return f"[bold white on #db4b4b]{label}[/]"
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +43,6 @@ class RepoListItem(ListItem):
     RepoListItem {
         height: auto;
         padding: 0 1;
-        margin: 0 0 0 0;
     }
     RepoListItem > Static {
         width: 100%;
@@ -55,12 +56,14 @@ class RepoListItem(ListItem):
 
     def compose(self) -> ComposeResult:
         info = self.repo_info
-        badge = _BADGE_MARKUP[info.status]
-        # Build a two-line display per repo:
-        #   Line 1: repo name  +  badge
-        #   Line 2: branch icon + branch name
+        badge = _make_badge(info)
+        rel = relative_time(info.last_commit_ts)
+
+        # Line 1: repo name  +  badge
         line1 = f"[bold #c0caf5]{info.name}[/]  {badge}"
-        line2 = f"  [#bb9af7] {info.branch}[/]"
+        # Line 2: branch  |  relative time
+        line2 = f"  [#bb9af7] {info.branch}[/]  [dim #565f89]⏱ {rel}[/]"
+
         yield Static(f"{line1}\n{line2}", markup=True)
 
 
@@ -70,21 +73,34 @@ class RepoListItem(ListItem):
 
 class RepoSidebar(Static):
     """
-    Left sidebar panel: title bar + scrollable list of repos.
+    Left sidebar panel: title + search input + scrollable list of repos.
 
     Posts a `RepoSidebar.RepoSelected` message when the user highlights
-    a different repo.
+    a different repo, and `RepoSidebar.SearchChanged` when the filter changes.
     """
 
     class RepoSelected(Message):
         """Fired when the user selects a repo from the list."""
-
         def __init__(self, repo_info: RepoInfo) -> None:
             super().__init__()
             self.repo_info = repo_info
 
+    class SearchChanged(Message):
+        """Fired when the search filter text changes."""
+        def __init__(self, query: str) -> None:
+            super().__init__()
+            self.query = query
+
     def compose(self) -> ComposeResult:
-        yield Static("⚡ [bold #7aa2f7]GitPulse[/]", id="sidebar-title", markup=True)
+        yield Static(
+            "⚡ [bold #7aa2f7]GitPulse[/]",
+            id="sidebar-title",
+            markup=True,
+        )
+        yield Input(
+            placeholder="🔍 Filter repos...",
+            id="search-input",
+        )
         yield ListView(id="repo-list")
 
     def populate(self, repos: list[RepoInfo]) -> None:
@@ -102,3 +118,12 @@ class RepoSidebar(Static):
         """Forward the highlight event as a RepoSelected message."""
         if event.item is not None and isinstance(event.item, RepoListItem):
             self.post_message(self.RepoSelected(event.item.repo_info))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Forward search input changes."""
+        if event.input.id == "search-input":
+            self.post_message(self.SearchChanged(event.value))
+
+    def focus_search(self) -> None:
+        """Focus the search input."""
+        self.query_one("#search-input", Input).focus()

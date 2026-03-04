@@ -3,6 +3,7 @@ main.py — GitPulse entry point.
 
 Launches the Textual TUI application. Accepts an optional --root CLI
 argument to set the directory to scan for git repositories.
+Repos are sorted by most recent commit date.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Footer, Static
+from textual.widgets import Header, Footer
 from textual.containers import Horizontal
 
 # Ensure the gitpulse package root is on sys.path so local imports work
@@ -34,6 +35,7 @@ class GitPulseApp(App):
 
     Scans a root directory for all local git repos and displays live
     status, recent commits, diffs, and branch management.
+    Repos are sorted by most recent commit (most active first).
     """
 
     CSS_PATH = "ui/styles.tcss"
@@ -44,14 +46,17 @@ class GitPulseApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit", show=True),
         Binding("r", "refresh", "Refresh", show=True),
-        Binding("tab", "focus_next", "Next Tab", show=False),
-        Binding("shift+tab", "focus_previous", "Prev Tab", show=False),
+        Binding("slash", "search", "Search", show=True),
+        Binding("escape", "clear_search", "Clear", show=False),
+        Binding("tab", "focus_next", "Next", show=False),
+        Binding("shift+tab", "focus_previous", "Prev", show=False),
     ]
 
     def __init__(self, root_dir: Path, **kwargs) -> None:
         super().__init__(**kwargs)
         self.root_dir = root_dir
         self.repos: list[RepoInfo] = []
+        self._all_repos: list[RepoInfo] = []  # Unfiltered master list
         self._selected_repo: RepoInfo | None = None
 
     # -----------------------------------------------------------------
@@ -82,14 +87,30 @@ class GitPulseApp(App):
         self._scan_and_populate()
         self.notify("Repositories refreshed ⚡", timeout=2)
 
+    def action_search(self) -> None:
+        """Focus the search input (bound to '/')."""
+        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+        sidebar.focus_search()
+
+    def action_clear_search(self) -> None:
+        """Clear search and refocus repo list."""
+        from textual.widgets import Input
+        inp = self.query_one("#search-input", Input)
+        inp.value = ""
+        self.query_one("#repo-list").focus()
+
     # -----------------------------------------------------------------
     # Internal helpers
     # -----------------------------------------------------------------
 
     def _scan_and_populate(self) -> None:
-        """Discover repos, build info objects, and populate sidebar."""
+        """Discover repos, build info objects, sort by date, and populate sidebar."""
         paths = scan_repos(self.root_dir)
-        self.repos = [get_repo_info(p) for p in paths]
+        self._all_repos = [get_repo_info(p) for p in paths]
+
+        # Sort by most recent commit date (descending)
+        self._all_repos.sort(key=lambda r: r.last_commit_ts, reverse=True)
+        self.repos = list(self._all_repos)
 
         sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
         sidebar.populate(self.repos)
@@ -102,7 +123,21 @@ class GitPulseApp(App):
         """Load a repo's data into the main panel."""
         self._selected_repo = repo_info
         main: MainPanel = self.query_one("#main-panel", MainPanel)
-        main.load_repo(repo_info.path)
+        main.load_repo(repo_info.path, repo_info)
+
+    def _apply_filter(self, query: str) -> None:
+        """Filter the repo list by name, re-populate sidebar."""
+        q = query.strip().lower()
+        if q:
+            self.repos = [r for r in self._all_repos if q in r.name.lower()]
+        else:
+            self.repos = list(self._all_repos)
+
+        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+        sidebar.populate(self.repos)
+
+        if self.repos:
+            self._select_repo(self.repos[0])
 
     # -----------------------------------------------------------------
     # Message handlers
@@ -111,6 +146,10 @@ class GitPulseApp(App):
     def on_repo_sidebar_repo_selected(self, message: RepoSidebar.RepoSelected) -> None:
         """User navigated to a different repo in the sidebar."""
         self._select_repo(message.repo_info)
+
+    def on_repo_sidebar_search_changed(self, message: RepoSidebar.SearchChanged) -> None:
+        """User typed in the search bar."""
+        self._apply_filter(message.query)
 
     def on_main_panel_branch_switch_requested(
         self, message: MainPanel.BranchSwitchRequested
@@ -126,7 +165,7 @@ class GitPulseApp(App):
         updated_info = get_repo_info(self._selected_repo.path)
         self._selected_repo = updated_info
         main: MainPanel = self.query_one("#main-panel", MainPanel)
-        main.load_repo(updated_info.path)
+        main.load_repo(updated_info.path, updated_info)
 
         # Also refresh sidebar to reflect branch change
         self._scan_and_populate()

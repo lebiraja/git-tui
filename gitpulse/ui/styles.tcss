@@ -1,0 +1,220 @@
+/* ===================================================================
+   GitPulse — Textual CSS Styles
+   Dark Tokyo Night-inspired theme with premium feel.
+   =================================================================== */
+
+/* ---------- Global ---------- */
+Screen {
+    background: #1a1b26;
+    color: #c0caf5;
+}
+
+/* ---------- Layout ---------- */
+#app-grid {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#sidebar-container {
+    width: 32;
+    min-width: 28;
+    max-width: 44;
+    background: #16161e;
+    border-right: vkey #3b4261;
+}
+
+#main-panel {
+    width: 1fr;
+    background: #1a1b26;
+}
+
+/* ---------- Sidebar ---------- */
+#sidebar-title {
+    dock: top;
+    width: 100%;
+    height: 3;
+    content-align: center middle;
+    text-style: bold;
+    color: #7aa2f7;
+    background: #1e2030;
+    border-bottom: heavy #3b4261;
+    padding: 0 1;
+}
+
+#repo-list {
+    background: #16161e;
+    scrollbar-color: #3b4261;
+    scrollbar-color-hover: #7aa2f7;
+    scrollbar-color-active: #7aa2f7;
+}
+
+/* List item styling */
+RepoListItem {
+    background: #16161e;
+    padding: 0 0 0 1;
+    margin: 0;
+    border-bottom: solid #24283b;
+}
+
+RepoListItem:hover {
+    background: #1f2335;
+}
+
+#repo-list:focus > RepoListItem.--highlight {
+    background: #283457;
+}
+
+/* ---------- Main Panel / Tabs ---------- */
+TabbedContent {
+    background: #1a1b26;
+    height: 1fr;
+}
+
+ContentSwitcher {
+    background: #1a1b26;
+    height: 1fr;
+}
+
+TabPane {
+    background: #1a1b26;
+    padding: 1 2;
+    height: 1fr;
+}
+
+Tabs {
+    background: #1e2030;
+    dock: top;
+    height: 3;
+}
+
+Tab {
+    color: #565f89;
+    background: #1e2030;
+    padding: 0 3;
+    margin: 0 1;
+}
+
+Tab:hover {
+    color: #c0caf5;
+    background: #24283b;
+}
+
+Tab.-active {
+    color: #7aa2f7;
+    background: #1a1b26;
+    text-style: bold;
+}
+
+Underline {
+    color: #7aa2f7;
+}
+
+/* ---------- DataTable (Commits) ---------- */
+DataTable {
+    background: #1a1b26;
+    height: 1fr;
+}
+
+DataTable > .datatable--header {
+    background: #1e2030;
+    color: #7aa2f7;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: #283457;
+    color: #c0caf5;
+}
+
+DataTable > .datatable--even-row {
+    background: #1a1b26;
+}
+
+DataTable > .datatable--odd-row {
+    background: #1e2030;
+}
+
+/* ---------- Status / Diff panels ---------- */
+#status-content {
+    height: 1fr;
+    background: #1a1b26;
+    padding: 1 1;
+}
+
+#diff-content {
+    height: 1fr;
+    background: #1a1b26;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+/* ---------- Branch list ---------- */
+#branch-list {
+    background: #1a1b26;
+    height: 1fr;
+}
+
+BranchListItem {
+    height: auto;
+    padding: 0 1;
+    background: #1a1b26;
+    border-bottom: solid #24283b;
+}
+
+BranchListItem:hover {
+    background: #1f2335;
+}
+
+#branch-list:focus > BranchListItem.--highlight {
+    background: #283457;
+}
+
+/* ---------- Footer ---------- */
+Footer {
+    background: #1e2030;
+    color: #565f89;
+}
+
+Footer > .footer--key {
+    color: #7aa2f7;
+    text-style: bold;
+    background: #24283b;
+}
+
+Footer > .footer--description {
+    color: #a9b1d6;
+}
+
+/* ---------- Header ---------- */
+Header {
+    background: #1e2030;
+    color: #7aa2f7;
+    dock: top;
+    height: 1;
+}
+
+HeaderTitle {
+    color: #7aa2f7;
+    text-style: bold;
+}
+
+/* ---------- Empty state ---------- */
+.empty-message {
+    color: #565f89;
+    text-style: italic;
+    padding: 2;
+    content-align: center middle;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- Scroll bars ---------- */
+* {
+    scrollbar-size: 1 1;
+    scrollbar-color: #3b4261;
+    scrollbar-color-hover: #7aa2f7;
+    scrollbar-color-active: #7aa2f7;
+    scrollbar-background: #1a1b26;
+    scrollbar-background-hover: #1a1b26;
+    scrollbar-background-active: #1a1b26;
+}

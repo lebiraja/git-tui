@@ -4,6 +4,16 @@ A developer-focused terminal dashboard that scans a root directory for all local
 
 Built with **Python**, **Textual**, **Rich**, and **GitPython**.
 
+## Screenshots
+
+**📋 Status tab** — repo summary panel, staged/unstaged/untracked file lists, stash entries
+
+![Status tab](ss/status.png)
+
+**📝 Commits tab** — last N commits with color-coded insertions/deletions
+
+![Commits tab](ss/commits.png)
+
 ## Install (one command)
 
 ```bash
@@ -29,18 +39,22 @@ source ~/.zshrc   # or source ~/.bashrc
 gitpulse                          # scans ~/projects (default)
 gitpulse --root /path/to/repos   # scans a custom directory
 gitpulse --root .                 # scans current directory
+gitpulse --commits 20            # show 20 commits per repo (default: 10)
+gitpulse --version               # print version
 ```
 
 ## Features
 
 - **Sorted by Activity** — Repos ordered by most recent commit date
 - **Status Badges** — Color-coded with file counts: 🟢 CLEAN / 🟡 MODIFIED (3) / 🔴 UNTRACKED (2)
+- **Activity Sparkline** — 7-week commit frequency bar (`▁▂▃▅▇`) next to each repo
 - **Relative Time** — "2h ago", "3d ago" shown next to each repo
-- **Search/Filter** — Press `/` to filter repos by name
+- **Search/Filter** — Press `/` to filter repos by name instantly
+- **Non-blocking scan** — Background worker keeps the UI responsive while scanning
 - **Tabbed Main Panel**:
-  - **📋 Status** — Repo summary header, staged/unstaged/untracked files with icons, stash list
-  - **📝 Commits** — Last 10 commits with diff stats (files changed, insertions, deletions)
-  - **🔀 Diff** — Syntax-highlighted uncommitted changes
+  - **📋 Status** — Styled repo summary panel, staged/unstaged/untracked files with icons, stash list
+  - **📝 Commits** — Last N commits with color-coded `+green` / `-red` diff stats
+  - **🔀 Diff** — Syntax-highlighted uncommitted changes with line count footer
   - **🌿 Branches** — All local branches, press Enter to switch
   - **🌐 Remotes** — Remote URLs with ahead/behind sync status
   - **🏷️ Tags** — Recent tags with date and tagger info

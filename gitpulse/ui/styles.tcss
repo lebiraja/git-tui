@@ -164,6 +164,15 @@ DataTable > .datatable--odd-row {
     overflow-y: auto;
 }
 
+#diff-footer {
+    height: 1;
+    dock: bottom;
+    background: #1e2030;
+    color: #565f89;
+    padding: 0 1;
+    border-top: solid #3b4261;
+}
+
 #remotes-content {
     height: 1fr;
     background: #1a1b26;

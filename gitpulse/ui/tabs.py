@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rich.console import Group
+from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -136,6 +138,7 @@ class MainPanel(Static):
                     id="diff-content",
                     markup=True,
                 )
+                yield Static("", id="diff-footer", markup=True)
 
             # ── Branches Tab ──
             with TabPane("🌿 Branches", id="tab-branches"):
@@ -228,27 +231,31 @@ class MainPanel(Static):
         """Populate the Status tab with summary header, file lists, and stashes."""
         fs = get_status(repo_path)
         stashes = get_stashes(repo_path)
-        lines: list[str] = []
-
-        # ── Repo summary header ──
-        lines.append("[bold #7aa2f7]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        lines.append(f"[bold #7aa2f7]  Repository:[/]  [bold]{repo_path.name}[/]")
-        lines.append(f"[bold #7aa2f7]  Path:[/]        [dim]{repo_path}[/]")
-
+        # ── Repo summary header as Rich Panel ──
+        header = Text()
+        header.append("  Path:   ", style="bold #7aa2f7")
+        header.append(str(repo_path) + "\n", style="dim #565f89")
         if info:
             rel = relative_time(info.last_commit_ts)
-            lines.append(f"[bold #7aa2f7]  Branch:[/]      [#bb9af7]{info.branch}[/]")
-            lines.append(
-                f"[bold #7aa2f7]  Last commit:[/] [dim]{info.last_commit_msg}[/] [dim #565f89]({rel})[/]"
-            )
-            lines.append(
-                f"[bold #7aa2f7]  Stats:[/]       "
-                f"[#9ece6a]{info.total_commits}[/] commits · "
-                f"[#e0af68]{info.contributor_count}[/] contributor{'s' if info.contributor_count != 1 else ''}"
-            )
+            header.append("  Branch: ", style="bold #7aa2f7")
+            header.append(info.branch + "\n", style="#bb9af7")
+            header.append("  Commit: ", style="bold #7aa2f7")
+            header.append(info.last_commit_msg, style="dim")
+            header.append(f"  ({rel})\n", style="dim #565f89")
+            header.append("  Stats:  ", style="bold #7aa2f7")
+            header.append(str(info.total_commits), style="#9ece6a")
+            header.append(" commits · ")
+            header.append(str(info.contributor_count), style="#e0af68")
+            n = info.contributor_count
+            header.append(f" contributor{'s' if n != 1 else ''}")
+        summary_panel = Panel(
+            header,
+            title=f"[bold #c0caf5] {repo_path.name} [/]",
+            border_style="#3b4261",
+            padding=(0, 0),
+        )
 
-        lines.append("[bold #7aa2f7]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        lines.append("")
+        lines: list[str] = [""]
 
         # ── File status ──
         if fs.staged:
@@ -285,7 +292,7 @@ class MainPanel(Static):
 
         content = self.query_one("#status-content", Static)
         content.remove_class("empty-message")
-        content.update("\n".join(lines))
+        content.update(Group(summary_panel, Text.from_markup("\n".join(lines))))
 
     def _load_commits(self, repo_path: Path) -> None:
         """Populate the Commits DataTable with stats."""
@@ -298,26 +305,32 @@ class MainPanel(Static):
             return
 
         for c in commits:
-            # Format +/- as colored text
-            plus_minus = f"+{c.insertions} -{c.deletions}"
+            # +/- with green/red colouring
+            pm = Text()
+            pm.append(f"+{c.insertions}", style="bold #9ece6a")
+            pm.append(" ")
+            pm.append(f"-{c.deletions}", style="bold #f7768e")
             table.add_row(
                 c.short_hash,
                 c.author,
                 c.date,
                 c.message[:60],
                 str(c.files_changed),
-                plus_minus,
+                pm,
             )
 
     def _load_diff(self, repo_path: Path) -> None:
-        """Populate the Diff tab with syntax-highlighted output."""
+        """Populate the Diff tab with syntax-highlighted output and a line-count footer."""
         diff_text = get_diff(repo_path)
         content = self.query_one("#diff-content", Static)
+        footer = self.query_one("#diff-footer", Static)
         content.remove_class("empty-message")
 
         if diff_text.startswith("No uncommitted"):
             content.update(f"[dim italic]{diff_text}[/]")
+            footer.update("")
         else:
+            line_count = len(diff_text.splitlines())
             syntax = Syntax(
                 diff_text,
                 "diff",
@@ -326,6 +339,9 @@ class MainPanel(Static):
                 word_wrap=True,
             )
             content.update(syntax)
+            footer.update(
+                f"[dim #565f89]  {line_count} lines  ·  ↑↓ / PgUp PgDn to scroll[/]"
+            )
 
     def _load_branches(self, repo_path: Path) -> None:
         """Populate the Branches ListView."""

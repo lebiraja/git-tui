@@ -9,6 +9,7 @@ branches. Uses GitPython for interfacing with local git repositories.
 from __future__ import annotations
 
 import enum
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +45,7 @@ class RepoInfo:
     modified_count: int = 0             # Number of modified + staged + untracked files
     total_commits: int = 0              # Total commit count on current branch
     contributor_count: int = 0          # Unique author count
+    commit_activity: list[int] = field(default_factory=list)  # Commits per week, 7 weeks oldest→newest
 
 
 @dataclass
@@ -148,6 +150,7 @@ def get_repo_info(path: Path) -> RepoInfo:
         last_msg = ""
         total = 0
         contributor_count = 0
+        activity: list[int] = [0] * 7
         try:
             head_commit = repo.head.commit
             last_ts = float(head_commit.committed_date)
@@ -166,6 +169,18 @@ def get_repo_info(path: Path) -> RepoInfo:
                 contributor_count = len(shortlog.strip().splitlines()) if shortlog.strip() else 0
             except Exception:
                 contributor_count = 0
+
+            # Commit activity: commits per week for the last 7 weeks (sparkline buckets)
+            try:
+                now_ts = time.time()
+                for c in repo.iter_commits(max_count=200):
+                    age_days = (now_ts - float(c.committed_date)) / 86400
+                    week_idx = int(age_days // 7)
+                    if 0 <= week_idx < 7:
+                        activity[week_idx] += 1
+                activity.reverse()  # oldest week first
+            except Exception:
+                activity = [0] * 7
         except Exception:
             pass
 
@@ -177,6 +192,7 @@ def get_repo_info(path: Path) -> RepoInfo:
         last_msg = ""
         total = 0
         contributor_count = 0
+        activity = []
 
     return RepoInfo(
         name=path.name,
@@ -188,6 +204,7 @@ def get_repo_info(path: Path) -> RepoInfo:
         modified_count=mod_count,
         total_commits=total,
         contributor_count=contributor_count,
+        commit_activity=activity,
     )
 
 

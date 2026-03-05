@@ -38,6 +38,23 @@ def _make_badge(info: RepoInfo) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Sparkline helper
+# ---------------------------------------------------------------------------
+
+_SPARK_CHARS = " ▁▂▃▄▅▆▇█"
+
+def _sparkline(activity: list[int]) -> str:
+    """Build a 7-char sparkline from weekly commit counts (oldest→newest)."""
+    if not activity or len(activity) < 7:
+        return "[dim #3b4261]▁▁▁▁▁▁▁[/]"
+    mx = max(activity)
+    if mx == 0:
+        return "[dim #3b4261]▁▁▁▁▁▁▁[/]"
+    chars = "".join(_SPARK_CHARS[min(8, int(v / mx * 8))] for v in activity)
+    return f"[#7aa2f7]{chars}[/]"
+
+
+# ---------------------------------------------------------------------------
 # Repo list item — single Static with Rich markup
 # ---------------------------------------------------------------------------
 
@@ -63,11 +80,12 @@ class RepoListItem(ListItem):
         info = self.repo_info
         badge = _make_badge(info)
         rel = relative_time(info.last_commit_ts)
+        spark = _sparkline(info.commit_activity)
 
         # Line 1: repo name  +  badge
         line1 = f"[bold #c0caf5]{info.name}[/]  {badge}"
-        # Line 2: branch  |  relative time
-        line2 = f"  [#bb9af7] {info.branch}[/]  [dim #565f89]⏱ {rel}[/]"
+        # Line 2: branch  |  relative time  |  sparkline
+        line2 = f"  [#bb9af7]⎇ {info.branch}[/]  [dim #565f89]⏱ {rel}[/]  {spark}"
 
         yield Static(f"{line1}\n{line2}", markup=True)
 
@@ -107,6 +125,18 @@ class RepoSidebar(Static):
             id="search-input",
         )
         yield ListView(id="repo-list")
+
+    def update_header(self, scanning: bool, count: int = 0) -> None:
+        """Update the title bar to show scanning state or repo count."""
+        title: Static = self.query_one("#sidebar-title", Static)
+        if scanning:
+            title.update("⚡ [bold #7aa2f7]GitPulse[/]  [dim #565f89]scanning…[/]")
+        else:
+            count_str = (
+                f"[dim #565f89]{count} repo{'s' if count != 1 else ''}[/]"
+                if count else ""
+            )
+            title.update(f"⚡ [bold #7aa2f7]GitPulse[/]  {count_str}")
 
     def populate(self, repos: list[RepoInfo]) -> None:
         """Clear and re-populate the repo list."""

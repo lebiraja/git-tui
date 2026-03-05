@@ -121,6 +121,11 @@ class GitPulseApp(App):
     def _start_scan(self) -> None:
         """Launch the repository scan in a background worker thread."""
         self._scanning = True
+        try:
+            sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+            sidebar.update_header(scanning=True)
+        except Exception:
+            pass
         self.run_worker(self._scan_worker, thread=True, exclusive=True)
 
     def _scan_worker(self) -> list[RepoInfo]:
@@ -143,6 +148,7 @@ class GitPulseApp(App):
             self.repos = list(infos)
 
             sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+            sidebar.update_header(scanning=False, count=len(infos))
             sidebar.populate(self.repos)
 
             if self.repos:

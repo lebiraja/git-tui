@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from git import Repo, InvalidGitRepositoryError, GitCommandError
+
+try:
+    from gitpulse.utils import relative_time
+except ImportError:
+    from utils import relative_time  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -119,32 +124,8 @@ def _determine_status(repo: Repo) -> tuple[RepoStatus, int]:
     return RepoStatus.CLEAN, 0
 
 
-def relative_time(ts: float) -> str:
-    """Convert a Unix timestamp to a human-readable relative time string."""
-    if ts == 0:
-        return "never"
-    now = datetime.now(timezone.utc).timestamp()
-    diff = now - ts
-    if diff < 60:
-        return "just now"
-    elif diff < 3600:
-        m = int(diff // 60)
-        return f"{m}m ago"
-    elif diff < 86400:
-        h = int(diff // 3600)
-        return f"{h}h ago"
-    elif diff < 604800:
-        d = int(diff // 86400)
-        return f"{d}d ago"
-    elif diff < 2592000:
-        w = int(diff // 604800)
-        return f"{w}w ago"
-    elif diff < 31536000:
-        mo = int(diff // 2592000)
-        return f"{mo}mo ago"
-    else:
-        y = int(diff // 31536000)
-        return f"{y}y ago"
+# Re-export so existing callers of `from git_ops import relative_time` keep working.
+__all__ = ["relative_time"]
 
 
 # ---------------------------------------------------------------------------
@@ -166,18 +147,25 @@ def get_repo_info(path: Path) -> RepoInfo:
         last_ts = 0.0
         last_msg = ""
         total = 0
-        contributors = set()
+        contributor_count = 0
         try:
             head_commit = repo.head.commit
             last_ts = float(head_commit.committed_date)
             last_msg = head_commit.message.strip().split("\n")[0]
 
-            # Count total commits and contributors (capped for speed)
-            for i, c in enumerate(repo.iter_commits()):
-                total += 1
-                contributors.add(str(c.author))
-                if i >= 500:  # Cap traversal for perf
-                    break
+            # Total commit count — one fast plumbing command
+            try:
+                count_out = repo.git.rev_list("HEAD", count=True).strip()
+                total = int(count_out) if count_out.isdigit() else 0
+            except Exception:
+                total = 0
+
+            # Contributor count via git shortlog (single command, no iteration)
+            try:
+                shortlog = repo.git.shortlog("-sn", "--no-merges", "HEAD")
+                contributor_count = len(shortlog.strip().splitlines()) if shortlog.strip() else 0
+            except Exception:
+                contributor_count = 0
         except Exception:
             pass
 
@@ -188,7 +176,7 @@ def get_repo_info(path: Path) -> RepoInfo:
         last_ts = 0.0
         last_msg = ""
         total = 0
-        contributors = set()
+        contributor_count = 0
 
     return RepoInfo(
         name=path.name,
@@ -199,7 +187,7 @@ def get_repo_info(path: Path) -> RepoInfo:
         last_commit_msg=last_msg,
         modified_count=mod_count,
         total_commits=total,
-        contributor_count=len(contributors),
+        contributor_count=contributor_count,
     )
 
 

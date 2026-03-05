@@ -1,3 +1,3 @@
-"""Allows running `python -m gitpulse` from the repo root."""
-from main import main
+"""Allows running `python -m gitpulse` from anywhere."""
+from gitpulse.main import main
 main()

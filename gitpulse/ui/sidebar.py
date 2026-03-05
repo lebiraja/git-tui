@@ -12,7 +12,12 @@ from textual.app import ComposeResult
 from textual.message import Message
 from textual.widgets import Static, ListView, ListItem, Input
 
-from git_ops import RepoInfo, RepoStatus, relative_time
+try:
+    from gitpulse.git_ops import RepoInfo, RepoStatus
+    from gitpulse.utils import relative_time
+except ImportError:
+    from git_ops import RepoInfo, RepoStatus  # type: ignore[no-redef]
+    from utils import relative_time  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------

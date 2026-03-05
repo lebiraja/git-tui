@@ -1,9 +1,11 @@
 """
 main.py — GitPulse entry point.
 
-Launches the Textual TUI application. Accepts an optional --root CLI
-argument to set the directory to scan for git repositories.
+Launches the Textual TUI application. Accepts CLI arguments to configure
+the scan root, number of commits to show, and version output.
 Repos are sorted by most recent commit date.
+
+Scanning runs in a background worker thread so the UI stays responsive.
 """
 
 from __future__ import annotations
@@ -14,25 +16,28 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Footer
+from textual.widgets import Header, Footer, Input
 from textual.containers import Horizontal
+from textual.worker import Worker, WorkerState
 
 # Support both installed-package imports (gitpulse.scanner) and
-# direct execution (python main.py) by trying relative first.
+# direct execution (python main.py) by trying package import first.
 try:
     from gitpulse.scanner import scan_repos
     from gitpulse.git_ops import get_repo_info, switch_branch, RepoInfo
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
+    from gitpulse.utils import __version__
 except ImportError:
     # Running directly: python main.py
     _THIS_DIR = Path(__file__).resolve().parent
     if str(_THIS_DIR) not in sys.path:
         sys.path.insert(0, str(_THIS_DIR))
-    from scanner import scan_repos
-    from git_ops import get_repo_info, switch_branch, RepoInfo
-    from ui.sidebar import RepoSidebar
-    from ui.tabs import MainPanel
+    from scanner import scan_repos  # type: ignore[no-redef]
+    from git_ops import get_repo_info, switch_branch, RepoInfo  # type: ignore[no-redef]
+    from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
+    from ui.tabs import MainPanel  # type: ignore[no-redef]
+    from utils import __version__  # type: ignore[no-redef]
 
 
 class GitPulseApp(App):
@@ -58,12 +63,14 @@ class GitPulseApp(App):
         Binding("shift+tab", "focus_previous", "Prev", show=False),
     ]
 
-    def __init__(self, root_dir: Path, **kwargs) -> None:
+    def __init__(self, root_dir: Path, commits: int = 10, **kwargs) -> None:
         super().__init__(**kwargs)
         self.root_dir = root_dir
+        self.commits = commits          # How many commits to show in Commits tab
         self.repos: list[RepoInfo] = []
         self._all_repos: list[RepoInfo] = []  # Unfiltered master list
         self._selected_repo: RepoInfo | None = None
+        self._scanning = False          # Guard against concurrent scans
 
     # -----------------------------------------------------------------
     # Layout
@@ -73,7 +80,7 @@ class GitPulseApp(App):
         yield Header()
         with Horizontal(id="app-grid"):
             yield RepoSidebar(id="sidebar-container")
-            yield MainPanel(id="main-panel")
+            yield MainPanel(id="main-panel", commits=self.commits)
         yield Footer()
 
     # -----------------------------------------------------------------
@@ -81,8 +88,8 @@ class GitPulseApp(App):
     # -----------------------------------------------------------------
 
     def on_mount(self) -> None:
-        """Initial scan on startup — delayed to ensure DOM is ready."""
-        self.call_later(self._scan_and_populate)
+        """Initial scan on startup."""
+        self._start_scan()
 
     # -----------------------------------------------------------------
     # Actions
@@ -90,8 +97,11 @@ class GitPulseApp(App):
 
     def action_refresh(self) -> None:
         """Rescan all repositories (bound to 'r')."""
-        self._scan_and_populate()
-        self.notify("Repositories refreshed ⚡", timeout=2)
+        if self._scanning:
+            self.notify("Scan already in progress…", timeout=2)
+            return
+        self._start_scan()
+        self.notify("Scanning repositories… ⚡", timeout=2)
 
     def action_search(self) -> None:
         """Focus the search input (bound to '/')."""
@@ -100,30 +110,51 @@ class GitPulseApp(App):
 
     def action_clear_search(self) -> None:
         """Clear search and refocus repo list."""
-        from textual.widgets import Input
         inp = self.query_one("#search-input", Input)
         inp.value = ""
         self.query_one("#repo-list").focus()
 
     # -----------------------------------------------------------------
-    # Internal helpers
+    # Background scan worker
     # -----------------------------------------------------------------
 
-    def _scan_and_populate(self) -> None:
-        """Discover repos, build info objects, sort by date, and populate sidebar."""
+    def _start_scan(self) -> None:
+        """Launch the repository scan in a background worker thread."""
+        self._scanning = True
+        self.run_worker(self._scan_worker, thread=True, exclusive=True)
+
+    def _scan_worker(self) -> list[RepoInfo]:
+        """Worker function: scan filesystem and collect RepoInfo objects.
+
+        Runs in a thread — no UI calls allowed here.
+        Returns the sorted list of RepoInfo for the main thread to consume.
+        """
         paths = scan_repos(self.root_dir)
-        self._all_repos = [get_repo_info(p) for p in paths]
+        infos = [get_repo_info(p) for p in paths]
+        infos.sort(key=lambda r: r.last_commit_ts, reverse=True)
+        return infos
 
-        # Sort by most recent commit date (descending)
-        self._all_repos.sort(key=lambda r: r.last_commit_ts, reverse=True)
-        self.repos = list(self._all_repos)
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Called on the main thread when the worker finishes."""
+        if event.state == WorkerState.SUCCESS and event.worker.result is not None:
+            self._scanning = False
+            infos: list[RepoInfo] = event.worker.result
+            self._all_repos = infos
+            self.repos = list(infos)
 
-        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
-        sidebar.populate(self.repos)
+            sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+            sidebar.populate(self.repos)
 
-        # Load first repo into main panel if available
-        if self.repos:
-            self._select_repo(self.repos[0])
+            if self.repos:
+                self._select_repo(self.repos[0])
+
+        elif event.state == WorkerState.ERROR:
+            self._scanning = False
+            self.notify(f"Scan failed: {event.worker.error}", severity="error", timeout=5)
+
+    # -----------------------------------------------------------------
+    # Internal helpers
+    # -----------------------------------------------------------------
 
     def _select_repo(self, repo_info: RepoInfo) -> None:
         """Load a repo's data into the main panel."""
@@ -173,8 +204,8 @@ class GitPulseApp(App):
         main: MainPanel = self.query_one("#main-panel", MainPanel)
         main.load_repo(updated_info.path, updated_info)
 
-        # Also refresh sidebar to reflect branch change
-        self._scan_and_populate()
+        # Also kick off a background rescan to update the sidebar
+        self._start_scan()
 
 
 # -----------------------------------------------------------------------
@@ -193,6 +224,18 @@ def parse_args() -> argparse.Namespace:
         default=str(Path.home() / "projects"),
         help="Root directory to scan for git repos (default: ~/projects)",
     )
+    parser.add_argument(
+        "--commits",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Number of commits to display per repo (default: 10)",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"gitpulse {__version__}",
+    )
     return parser.parse_args()
 
 
@@ -205,7 +248,7 @@ def main() -> None:
         print(f"Error: '{root}' is not a valid directory.", file=sys.stderr)
         sys.exit(1)
 
-    app = GitPulseApp(root_dir=root)
+    app = GitPulseApp(root_dir=root, commits=args.commits)
     app.run()
 
 

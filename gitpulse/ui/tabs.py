@@ -24,19 +24,20 @@ from textual.widgets import (
     ListItem,
 )
 
-from git_ops import (
-    get_status,
-    get_commits,
-    get_diff,
-    get_branches,
-    get_stashes,
-    get_remotes,
-    get_tags,
-    get_file_tree,
-    relative_time,
-    BranchInfo,
-    RepoInfo,
-)
+try:
+    from gitpulse.git_ops import (
+        get_status, get_commits, get_diff, get_branches,
+        get_stashes, get_remotes, get_tags, get_file_tree,
+        BranchInfo, RepoInfo,
+    )
+    from gitpulse.utils import relative_time
+except ImportError:
+    from git_ops import (  # type: ignore[no-redef]
+        get_status, get_commits, get_diff, get_branches,
+        get_stashes, get_remotes, get_tags, get_file_tree,
+        BranchInfo, RepoInfo,
+    )
+    from utils import relative_time  # type: ignore[no-redef]
 
 
 # ── Icons ──────────────────────────────────────────────────────────────────
@@ -88,10 +89,23 @@ class MainPanel(Static):
             super().__init__()
             self.branch_name = branch_name
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, commits: int = 10, **kwargs) -> None:
         super().__init__(**kwargs)
         self._current_repo: Path | None = None
         self._current_info: RepoInfo | None = None
+        self._commits_n = commits
+        # Track which tabs have been loaded for the current repo
+        self._loaded_tabs: set[str] = set()
+        # Map tab id → loader method
+        self._tab_loaders: dict[str, str] = {
+            "tab-status":   "_load_status",
+            "tab-commits":  "_load_commits",
+            "tab-diff":     "_load_diff",
+            "tab-branches": "_load_branches",
+            "tab-remotes":  "_load_remotes",
+            "tab-tags":     "_load_tags",
+            "tab-tree":     "_load_tree",
+        }
 
     def compose(self) -> ComposeResult:
         with TabbedContent(
@@ -166,16 +180,45 @@ class MainPanel(Static):
     # -----------------------------------------------------------------
 
     def load_repo(self, repo_path: Path, repo_info: RepoInfo | None = None) -> None:
-        """Fetch and display data for the given repository."""
+        """Switch to a new repository: reset loaded state, load the active tab only."""
         self._current_repo = repo_path
         self._current_info = repo_info
-        self._load_status(repo_path, repo_info)
-        self._load_commits(repo_path)
-        self._load_diff(repo_path)
-        self._load_branches(repo_path)
-        self._load_remotes(repo_path)
-        self._load_tags(repo_path)
-        self._load_tree(repo_path)
+        self._loaded_tabs.clear()
+
+        # Only load whichever tab is currently visible
+        try:
+            tc: TabbedContent = self.query_one(TabbedContent)
+            active_id = str(tc.active) if tc.active else "tab-status"
+        except Exception:
+            active_id = "tab-status"
+
+        self._load_tab(active_id)
+
+    # -----------------------------------------------------------------
+    # Lazy tab dispatch
+    # -----------------------------------------------------------------
+
+    def _load_tab(self, tab_id: str) -> None:
+        """Load a single tab by its pane id (no-op if already loaded)."""
+        if self._current_repo is None:
+            return
+        if tab_id in self._loaded_tabs:
+            return
+        method_name = self._tab_loaders.get(tab_id)
+        if method_name is None:
+            return
+        method = getattr(self, method_name)
+        if tab_id == "tab-status":
+            method(self._current_repo, self._current_info)
+        else:
+            method(self._current_repo)
+        self._loaded_tabs.add(tab_id)
+
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        """Load data for a tab the first time it becomes visible."""
+        self._load_tab(str(event.pane.id) if event.pane else "")
 
     # -----------------------------------------------------------------
     # Tab loaders
@@ -249,7 +292,7 @@ class MainPanel(Static):
         table: DataTable = self.query_one("#commits-table", DataTable)
         table.clear()
 
-        commits = get_commits(repo_path)
+        commits = get_commits(repo_path, self._commits_n)
         if not commits:
             table.add_row("—", "No commits", "", "", "", "")
             return

@@ -42,7 +42,7 @@ echo -e "   ${GREEN}✓ Created .venv${NC}"
 
 # ── 3. Install dependencies ────────────────────────────────────────────────
 echo -e "${YELLOW}▸ Installing dependencies...${NC}"
-"$VENV/bin/pip" install --quiet --upgrade pip
+"$VENV/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
 "$VENV/bin/pip" install --quiet -e "$REPO_DIR"
 echo -e "   ${GREEN}✓ Installed textual, rich, gitpython${NC}"
 
@@ -73,9 +73,8 @@ echo -e "${BOLD}${GREEN}✅ GitPulse installed successfully!${NC}"
 echo ""
 echo -e "  ${BOLD}Reload your shell, then run:${NC}"
 echo ""
-echo -e "   ${CYAN}gitpulse${NC}                         # scans ~/projects"
+echo -e "   ${CYAN}gitpulse${NC}                         # scans current directory"
 echo -e "   ${CYAN}gitpulse --root /path/to/repos${NC}   # scans a custom dir"
-echo -e "   ${CYAN}gitpulse --root .${NC}                 # scans current directory"
 echo ""
 echo -e "  ${BOLD}Or reload now with:${NC}"
 echo -e "   ${CYAN}source ~/.bashrc${NC}   # bash users"

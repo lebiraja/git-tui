@@ -227,8 +227,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--root",
         type=str,
-        default=str(Path.home() / "projects"),
-        help="Root directory to scan for git repos (default: ~/projects)",
+        default=".",
+        help="Root directory to scan for git repos (default: current directory)",
     )
     parser.add_argument(
         "--commits",

@@ -42,7 +42,7 @@ echo -e "   ${GREEN}✓ Created .venv${NC}"
 
 # ── 3. Install dependencies ────────────────────────────────────────────────
 echo -e "${YELLOW}▸ Installing dependencies...${NC}"
-"$VENV/bin/pip" install --quiet --upgrade pip
+"$VENV/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
 "$VENV/bin/pip" install --quiet -e "$REPO_DIR"
 echo -e "   ${GREEN}✓ Installed textual, rich, gitpython${NC}"
 

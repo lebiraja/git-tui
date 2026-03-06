@@ -6,8 +6,8 @@
 set -e
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="$REPO_DIR/gitpulse/.venv"
-BIN="$VENV/bin/gitpulse"
+VENV="$REPO_DIR/.venv"
+BIN="$VENV/bin/python"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -49,33 +49,21 @@ echo -e "   ${GREEN}✓ Installed textual, rich, gitpython${NC}"
 # ── 4. Detect shell and add alias ──────────────────────────────────────────
 echo -e "${YELLOW}▸ Adding 'gitpulse' command to your shell...${NC}"
 
-ALIAS_LINE="alias gitpulse=\"$BIN\""
+ALIAS_LINE="alias gitpulse=\"$BIN -m gitpulse\""
 
-# Detect which rc files to update
-RC_FILES=()
-if [[ -n "$ZSH_VERSION" ]] || [[ "$SHELL" == */zsh ]]; then
-    RC_FILES+=("$HOME/.zshrc")
-fi
-if [[ -n "$BASH_VERSION" ]] || [[ "$SHELL" == */bash ]]; then
-    RC_FILES+=("$HOME/.bashrc")
-fi
-# Fallback — write to both if neither matched
-if [[ ${#RC_FILES[@]} -eq 0 ]]; then
-    RC_FILES+=("$HOME/.bashrc" "$HOME/.zshrc")
-fi
+# Write to every rc file that exists (covers bash, zsh, and both at once)
+RC_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile")
 
 for RC in "${RC_FILES[@]}"; do
-    if [[ -f "$RC" ]] || [[ "$RC" == *.zshrc ]]; then
-        if grep -q "alias gitpulse=" "$RC" 2>/dev/null; then
-            # Update existing alias
-            sed -i "s|alias gitpulse=.*|$ALIAS_LINE|" "$RC"
-            echo -e "   ${GREEN}✓ Updated existing alias in $RC${NC}"
-        else
-            echo "" >> "$RC"
-            echo "# GitPulse TUI" >> "$RC"
-            echo "$ALIAS_LINE" >> "$RC"
-            echo -e "   ${GREEN}✓ Added alias to $RC${NC}"
-        fi
+    [[ -f "$RC" ]] || continue
+    if grep -q "alias gitpulse=" "$RC" 2>/dev/null; then
+        sed -i "s|alias gitpulse=.*|$ALIAS_LINE|" "$RC"
+        echo -e "   ${GREEN}✓ Updated alias in $(basename $RC)${NC}"
+    else
+        echo "" >> "$RC"
+        echo "# GitPulse TUI" >> "$RC"
+        echo "$ALIAS_LINE" >> "$RC"
+        echo -e "   ${GREEN}✓ Added alias to $(basename $RC)${NC}"
     fi
 done
 
@@ -90,11 +78,8 @@ echo -e "   ${CYAN}gitpulse --root /path/to/repos${NC}   # scans a custom dir"
 echo -e "   ${CYAN}gitpulse --root .${NC}                 # scans current directory"
 echo ""
 echo -e "  ${BOLD}Or reload now with:${NC}"
-if [[ "$SHELL" == */zsh ]]; then
-    echo -e "   ${CYAN}source ~/.zshrc${NC}"
-else
-    echo -e "   ${CYAN}source ~/.bashrc${NC}"
-fi
+echo -e "   ${CYAN}source ~/.bashrc${NC}   # bash users"
+echo -e "   ${CYAN}source ~/.zshrc${NC}    # zsh users"
 echo ""
 echo -e "  ${BOLD}Keybindings:${NC}  ↑↓ navigate  /  search  r  refresh  q  quit"
 echo ""

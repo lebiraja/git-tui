@@ -151,19 +151,21 @@ DataTable > .datatable--odd-row {
 }
 
 /* ---------- Status / Diff / Remotes panels ---------- */
-#status-content {
-    height: 1fr;
-    background: #1a1b26;
-    padding: 1 1;
-}
-
-#diff-content {
-    height: 1fr;
+#status-summary {
+    height: auto;
     background: #1a1b26;
     padding: 0 1;
-    overflow-y: auto;
 }
 
+#status-file-list {
+    height: 1fr;
+    background: #1a1b26;
+    scrollbar-color: #3b4261;
+}
+
+#status-hints,
+#commits-hints,
+#branch-hints,
 #diff-footer {
     height: 1;
     dock: bottom;
@@ -173,17 +175,98 @@ DataTable > .datatable--odd-row {
     border-top: solid #3b4261;
 }
 
-#remotes-content {
+StatusFileItem {
+    height: 1;
+    padding: 0 1;
+    background: #1a1b26;
+    border-bottom: solid #1f2335;
+}
+
+StatusFileItem:hover {
+    background: #1f2335;
+}
+
+#status-file-list:focus > StatusFileItem.--highlight {
+    background: #283457;
+}
+
+/* ---------- Diff tab layout ---------- */
+#diff-layout {
+    height: 1fr;
+    layout: horizontal;
+}
+
+#diff-file-panel {
+    width: 30;
+    min-width: 22;
+    background: #16161e;
+    border-right: vkey #3b4261;
+}
+
+#diff-file-header {
+    height: 1;
+    background: #1e2030;
+    padding: 0 1;
+    color: #7aa2f7;
+    text-style: bold;
+}
+
+#diff-file-list {
+    height: 1fr;
+    background: #16161e;
+    scrollbar-color: #3b4261;
+}
+
+DiffFileItem {
+    height: 1;
+    padding: 0 1;
+    background: #16161e;
+}
+
+DiffFileItem:hover {
+    background: #1f2335;
+}
+
+#diff-file-list:focus > DiffFileItem.--highlight {
+    background: #283457;
+}
+
+#diff-view-panel {
+    width: 1fr;
+    background: #1a1b26;
+    padding: 0 1;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+#diff-content {
+    background: #1a1b26;
+    height: auto;
+}
+
+/* ---------- Remotes + Tree scroll containers ---------- */
+#remotes-scroll {
+    width: 100%;
     height: 1fr;
     background: #1a1b26;
     padding: 1 1;
 }
 
-#tree-content {
+#remotes-content {
+    background: #1a1b26;
+    height: auto;
+}
+
+#tree-scroll {
+    width: 100%;
     height: 1fr;
     background: #1a1b26;
     padding: 1 2;
-    overflow-y: auto;
+}
+
+#tree-content {
+    background: #1a1b26;
+    height: auto;
 }
 
 /* ---------- Branch list ---------- */

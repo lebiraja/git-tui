@@ -213,6 +213,15 @@ class GitPulseApp(App):
         # Also kick off a background rescan to update the sidebar
         self._start_scan()
 
+    def on_main_panel_reload_requested(self, message: MainPanel.ReloadRequested) -> None:
+        """Fired after a commit or branch operation — refresh sidebar entry."""
+        if self._selected_repo is None:
+            return
+        updated_info = get_repo_info(self._selected_repo.path)
+        self._selected_repo = updated_info
+        # Rescan to update sidebar badges/timestamps
+        self._start_scan()
+
 
 # -----------------------------------------------------------------------
 # CLI entry point

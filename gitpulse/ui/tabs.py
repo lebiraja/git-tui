@@ -15,6 +15,7 @@ New in this version:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from rich.panel import Panel
@@ -35,6 +36,7 @@ from textual.widgets import (
     Static,
     TabbedContent,
     TabPane,
+    Tree,
 )
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 
@@ -45,6 +47,9 @@ try:
         get_changed_files, get_file_diff, get_commit_diff,
         stage_files, unstage_files, stage_all, unstage_all, commit_changes,
         create_branch, delete_branch,
+        git_fetch, git_pull, git_push,
+        stash_create, stash_pop,
+        get_commit_graph, get_file_contents, get_tracked_files,
         BranchInfo, RepoInfo,
     )
     from gitpulse.utils import relative_time
@@ -55,6 +60,9 @@ except ImportError:
         get_changed_files, get_file_diff, get_commit_diff,
         stage_files, unstage_files, stage_all, unstage_all, commit_changes,
         create_branch, delete_branch,
+        git_fetch, git_pull, git_push,
+        stash_create, stash_pop,
+        get_commit_graph, get_file_contents, get_tracked_files,
         BranchInfo, RepoInfo,
     )
     from utils import relative_time  # type: ignore[no-redef]
@@ -319,6 +327,169 @@ class CommitDiffModal(ModalScreen):
 
 
 # ===================================================================
+# Modal: Stash dialog
+# ===================================================================
+
+class StashModal(ModalScreen):
+    """Modal dialog for creating a new git stash."""
+
+    DEFAULT_CSS = """
+    StashModal {
+        align: center middle;
+    }
+    #stash-dialog {
+        width: 56;
+        height: auto;
+        padding: 1 2;
+        background: #1e2030;
+        border: thick #e0af68;
+    }
+    #stash-title {
+        text-style: bold;
+        color: #e0af68;
+        margin-bottom: 1;
+        text-align: center;
+        width: 100%;
+        height: 1;
+    }
+    #stash-msg-input {
+        width: 100%;
+        margin-bottom: 1;
+    }
+    #stash-buttons {
+        layout: horizontal;
+        width: 100%;
+        height: 3;
+        align: center middle;
+    }
+    #btn-do-stash { margin: 0 1; }
+    #btn-cancel-stash { margin: 0 1; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id="stash-dialog"):
+            yield Static("  Stash Changes", id="stash-title", markup=False)
+            yield Input(
+                placeholder="Stash message  (optional · Enter to stash · Esc to cancel)",
+                id="stash-msg-input",
+            )
+            with Horizontal(id="stash-buttons"):
+                yield Button("Stash", id="btn-do-stash", variant="warning")
+                yield Button("Cancel", id="btn-cancel-stash")
+
+    def on_mount(self) -> None:
+        self.query_one("#stash-msg-input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-do-stash":
+            self._submit()
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "stash-msg-input":
+            self._submit()
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            event.stop()
+
+    def _submit(self) -> None:
+        msg = self.query_one("#stash-msg-input", Input).value.strip()
+        self.dismiss(msg)  # Empty string = no message, still valid
+
+
+# ===================================================================
+# Modal: File preview
+# ===================================================================
+
+class FilePreviewModal(ModalScreen):
+    """Full-screen modal showing the content of a file with syntax highlighting."""
+
+    BINDINGS = [Binding("escape,q", "close", "Close", show=True)]
+
+    DEFAULT_CSS = """
+    FilePreviewModal {
+        align: center middle;
+    }
+    #fpreview-frame {
+        width: 92%;
+        height: 88%;
+        background: #1e2030;
+        border: thick #9ece6a;
+    }
+    #fpreview-title {
+        dock: top;
+        height: 1;
+        background: #24283b;
+        color: #9ece6a;
+        text-style: bold;
+        padding: 0 1;
+    }
+    #fpreview-scroll {
+        width: 100%;
+        height: 1fr;
+    }
+    #fpreview-body {
+        padding: 0 1;
+    }
+    #fpreview-footer {
+        dock: bottom;
+        height: 1;
+        background: #1e2030;
+        color: #565f89;
+        padding: 0 1;
+        border-top: solid #3b4261;
+    }
+    """
+
+    def __init__(self, filepath: str, content: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._filepath = filepath
+        self._content = content
+
+    def compose(self) -> ComposeResult:
+        # Detect language from extension for syntax highlighting
+        ext = self._filepath.rsplit(".", 1)[-1].lower() if "." in self._filepath else "text"
+        _EXT_MAP = {
+            "py": "python", "js": "javascript", "ts": "typescript",
+            "rs": "rust", "go": "go", "c": "c", "cpp": "cpp",
+            "java": "java", "sh": "bash", "bash": "bash",
+            "yaml": "yaml", "yml": "yaml", "toml": "toml",
+            "json": "json", "md": "markdown", "html": "html",
+            "css": "css", "tcss": "css", "sql": "sql",
+            "rb": "ruby", "php": "php",
+        }
+        lang = _EXT_MAP.get(ext, "text")
+        lines = len(self._content.splitlines())
+
+        with Container(id="fpreview-frame"):
+            yield Static(
+                f"  {self._filepath}",
+                id="fpreview-title",
+                markup=False,
+            )
+            with ScrollableContainer(id="fpreview-scroll"):
+                if self._content.startswith("Error reading"):
+                    body: object = f"[dim italic]{self._content}[/]"
+                else:
+                    body = Syntax(
+                        self._content, lang, theme="monokai",
+                        line_numbers=True, word_wrap=False,
+                    )
+                yield Static(body, id="fpreview-body")
+            yield Static(
+                f"  {lines} lines · lang={lang} · ↑↓ PgUp PgDn scroll · Esc/q close",
+                id="fpreview-footer",
+                markup=False,
+            )
+
+    def action_close(self) -> None:
+        self.dismiss()
+
+
+# ===================================================================
 # Branch list item
 # ===================================================================
 
@@ -422,6 +593,8 @@ class MainPanel(Widget):
         Binding("shift+u",   "unstage_all",   "Unstage All", show=False),
         Binding("c",         "open_commit",   "Commit",      show=True),
         Binding("n",         "new_branch",    "New Branch",  show=True),
+        Binding("z",         "stash_create",  "Stash",       show=False),
+        Binding("shift+z",   "stash_pop",     "Pop Stash",   show=False),
     ]
 
     # ── Messages ─────────────────────────────────────────────────────
@@ -473,14 +646,21 @@ class MainPanel(Widget):
                 )
                 yield ListView(id="status-file-list")
                 yield Static(
-                    "[dim #565f89]  s=stage  u=unstage  a=stage-all  U=unstage-all  c=commit[/]",
+                    "[dim #565f89]  s=stage  u=unstage  a=stage-all  U=unstage-all  c=commit  z=stash  Z=pop-stash[/]",
                     id="status-hints",
                     markup=True,
                 )
 
             # ── Commits ──
             with TabPane("📝 Commits", id="tab-commits"):
-                yield DataTable(id="commits-table")
+                with Vertical(id="commits-layout"):
+                    with ScrollableContainer(id="commits-graph-scroll"):
+                        yield Static(
+                            "[dim italic]← Select a repository to view graph[/]",
+                            id="commits-graph",
+                            markup=True,
+                        )
+                    yield DataTable(id="commits-table")
                 yield Static(
                     "[dim #565f89]  Enter or d = view commit diff[/]",
                     id="commits-hints",
@@ -526,6 +706,11 @@ class MainPanel(Widget):
                         id="remotes-content",
                         markup=True,
                     )
+                yield Static(
+                    "[dim #565f89]  f=fetch  p=pull  P=push[/]",
+                    id="remotes-hints",
+                    markup=True,
+                )
 
             # ── Tags ──
             with TabPane("🏷️ Tags", id="tab-tags"):
@@ -533,12 +718,12 @@ class MainPanel(Widget):
 
             # ── Tree ──
             with TabPane("🌲 Tree", id="tab-tree"):
-                with ScrollableContainer(id="tree-scroll"):
-                    yield Static(
-                        "[dim italic]← Select a repository to view structure[/]",
-                        id="tree-content",
-                        markup=True,
-                    )
+                yield Tree("← Select a repository", id="tree-widget")
+                yield Static(
+                    "[dim #565f89]  ↑↓ navigate  Enter = preview file[/]",
+                    id="tree-hints",
+                    markup=True,
+                )
 
     def on_mount(self) -> None:
         ct: DataTable = self.query_one("#commits-table", DataTable)
@@ -662,6 +847,30 @@ class MainPanel(Widget):
         table: DataTable = self.query_one("#commits-table", DataTable)
         table.clear()
         commits = get_commits(repo_path, self._commits_n)
+
+        # ── Commit graph (ASCII art) ─────────────────────────────────
+        graph_text = get_commit_graph(repo_path, max(self._commits_n, 40))
+        graph_static: Static = self.query_one("#commits-graph", Static)
+        if graph_text and not graph_text.startswith("Error"):
+            # Colorize graph characters for visual richness
+            colored_lines: list[str] = []
+            for line in graph_text.splitlines():
+                # Highlight the short hash (7 hex chars after the graph art)
+                line_esc = re.sub(
+                    r'\b([0-9a-f]{7})\b',
+                    r'[bold #7aa2f7]\1[/]',
+                    line,
+                )
+                # Colorize graph structure characters
+                line_esc = line_esc.replace("*", "[#bb9af7]*[/]")
+                line_esc = line_esc.replace("|", "[#3b4261]|[/]")
+                line_esc = line_esc.replace("/", "[#3b4261]/[/]")
+                line_esc = line_esc.replace("\\", "[#3b4261]\\[/]")
+                colored_lines.append(line_esc)
+            graph_static.update("\n".join(colored_lines))
+        else:
+            graph_static.update(f"[dim italic]{graph_text or 'No commits'}[/]")
+
         if not commits:
             table.add_row("—", "No commits", "", "", "", "")
             return
@@ -739,12 +948,63 @@ class MainPanel(Widget):
             table.add_row(t.name, t.date, t.tagger, t.message[:60])
 
     def _load_tree(self, repo_path: Path) -> None:
-        content: Static = self.query_one("#tree-content", Static)
-        try:
-            tree = get_file_tree(repo_path)
-            content.update(tree)
-        except Exception as exc:
-            content.update(f"[dim italic]Error building tree: {exc}[/]")
+        tree_widget: Tree = self.query_one("#tree-widget", Tree)
+        tree_widget.clear()
+        tree_widget.root.label = Text.from_markup(
+            f"[bold #7aa2f7]\U0001f4c1 {repo_path.name}[/]"
+        )
+        tree_widget.root.expand()
+
+        file_paths = get_tracked_files(repo_path)
+        if not file_paths:
+            tree_widget.root.add_leaf("[dim italic]No tracked files found[/]")
+            return
+
+        # Build a nested dict then populate the Textual Tree
+        root_dict: dict = {}
+
+        def _insert(d: dict, parts: list[str]) -> None:
+            if not parts:
+                return
+            head, *tail = parts
+            if tail:
+                d.setdefault(head, {})
+                if isinstance(d[head], dict):
+                    _insert(d[head], tail)
+            else:
+                d[head] = None  # leaf = file
+
+        for fp in file_paths:
+            _insert(root_dict, fp.replace("\\", "/").split("/"))
+
+        # Store the full path for each leaf so we can open it on Enter
+        def _build(node, d: dict, prefix: str = "") -> None:
+            dirs = sorted(k for k, v in d.items() if isinstance(v, dict))
+            files = sorted(k for k, v in d.items() if v is None)
+            for name in dirs:
+                child = node.add(
+                    f"[bold #bb9af7]\ud83d\udcc2 {name}[/]",
+                    data={"type": "dir"},
+                )
+                _build(child, d[name], f"{prefix}{name}/")
+            for name in files:
+                ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+                if ext in ("py", "js", "ts", "go", "rs", "c", "cpp", "java"):
+                    label = f"[#9ece6a]  {name}[/]"
+                elif ext in ("md", "rst", "txt"):
+                    label = f"[#e0af68]  {name}[/]"
+                elif ext in ("json", "yaml", "yml", "toml", "ini", "cfg", "env"):
+                    label = f"[#7dcfff]  {name}[/]"
+                elif ext in ("sh", "bash", "zsh"):
+                    label = f"[#f7768e]  {name}[/]"
+                else:
+                    label = f"[#c0caf5]  {name}[/]"
+                node.add_leaf(
+                    label,
+                    data={"type": "file", "path": f"{prefix}{name}"},
+                )
+
+        _build(tree_widget.root, root_dict)
 
     # ── Diff: real-time preview on navigate ──────────────────────────
 
@@ -865,6 +1125,61 @@ class MainPanel(Widget):
 
         self.app.push_screen(NewBranchModal(), _after_create)
 
+    def action_stash_create(self) -> None:
+        """Open the stash dialog (z key)."""
+        if self._current_repo is None:
+            return
+
+        async def _after_stash(message: str | None) -> None:
+            # message can be "" (no name) or a real string — both are valid
+            if message is None:
+                return
+            result = stash_create(self._current_repo, message)
+            self.app.notify(result, timeout=3)
+            self._reload_tab("tab-status")
+            self.post_message(self.ReloadRequested())
+
+        self.app.push_screen(StashModal(), _after_stash)
+
+    def action_stash_pop(self) -> None:
+        """Pop the top stash (Z key)."""
+        if self._current_repo is None:
+            return
+        result = stash_pop(self._current_repo)
+        self.app.notify(result, timeout=3)
+        self._reload_tab("tab-status")
+        self.post_message(self.ReloadRequested())
+
+    def action_fetch(self) -> None:
+        """Fetch from all remotes (f key in Remotes tab)."""
+        if self._current_repo is None:
+            return
+        self.app.notify("Fetching…", timeout=2)
+        result = git_fetch(self._current_repo)
+        self.app.notify(result, timeout=4)
+        self._reload_tab("tab-remotes")
+
+    def action_pull(self) -> None:
+        """Pull from the tracking branch (p key in Remotes tab)."""
+        if self._current_repo is None:
+            return
+        self.app.notify("Pulling…", timeout=2)
+        result = git_pull(self._current_repo)
+        self.app.notify(result, timeout=5)
+        for tab in ("tab-status", "tab-commits", "tab-remotes"):
+            self._loaded_tabs.discard(tab)
+        self._load_tab(self._active_tab())
+        self.post_message(self.ReloadRequested())
+
+    def action_push(self) -> None:
+        """Push to the tracking branch (P key in Remotes tab)."""
+        if self._current_repo is None:
+            return
+        self.app.notify("Pushing…", timeout=2)
+        result = git_push(self._current_repo)
+        self.app.notify(result, timeout=5)
+        self._reload_tab("tab-remotes")
+
 
     def _delete_selected_branch(self) -> None:
         if self._current_repo is None:
@@ -909,13 +1224,32 @@ class MainPanel(Widget):
         if event.data_table.id == "commits-table":
             self._open_commit_diff()
 
+    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        """Enter on a tree leaf → open file preview modal."""
+        if event.node.tree.id != "tree-widget":
+            return
+        data = event.node.data
+        if data and data.get("type") == "file" and self._current_repo is not None:
+            filepath: str = data["path"]
+            content = get_file_contents(self._current_repo, filepath)
+            self.app.push_screen(FilePreviewModal(filepath, content))
+
     def on_key(self, event) -> None:
-        """Route 'd' key depending on active tab."""
+        """Route key presses depending on the active tab."""
+        tab = self._active_tab()
         if event.key == "d":
-            tab = self._active_tab()
             if tab == "tab-branches":
                 self._delete_selected_branch()
                 event.stop()
             elif tab == "tab-commits":
                 self._open_commit_diff()
                 event.stop()
+        elif event.key == "f" and tab == "tab-remotes":
+            self.action_fetch()
+            event.stop()
+        elif event.key == "p" and tab == "tab-remotes":
+            self.action_pull()
+            event.stop()
+        elif event.key == "P" and tab == "tab-remotes":
+            self.action_push()
+            event.stop()

@@ -660,3 +660,133 @@ def get_file_tree(path: Path) -> "rich.tree.Tree":
 
     build_tree(rich_tree, root_dict)
     return rich_tree
+
+
+# ===================================================================
+# Remote operations
+# ===================================================================
+
+def git_fetch(path: Path, remote_name: str = "") -> str:
+    """
+    Fetch from remote(s). If *remote_name* is empty, fetches all remotes.
+    Returns a human-readable status message.
+    """
+    repo = _open_repo(path)
+    try:
+        if remote_name:
+            repo.git.fetch(remote_name)
+            return f"Fetched from '{remote_name}' ✓"
+        else:
+            repo.git.fetch("--all")
+            return "Fetched from all remotes ✓"
+    except Exception as exc:
+        return f"Error fetching: {exc}"
+
+
+def git_pull(path: Path) -> str:
+    """
+    Pull from the current tracking branch.
+    Returns the git output or a friendly message.
+    """
+    repo = _open_repo(path)
+    try:
+        result = repo.git.pull()
+        return result.strip() if result.strip() else "Already up to date ✓"
+    except Exception as exc:
+        return f"Error pulling: {exc}"
+
+
+def git_push(path: Path) -> str:
+    """
+    Push the current branch to its tracking remote.
+    Returns the git output or a friendly message.
+    """
+    repo = _open_repo(path)
+    try:
+        result = repo.git.push()
+        return result.strip() if result.strip() else "Push successful ✓"
+    except Exception as exc:
+        return f"Error pushing: {exc}"
+
+
+# ===================================================================
+# Stash operations
+# ===================================================================
+
+def stash_create(path: Path, message: str = "") -> str:
+    """
+    Create a new stash from the current working-tree changes.
+    Returns a status message.
+    """
+    repo = _open_repo(path)
+    try:
+        if message.strip():
+            repo.git.stash("push", "-m", message.strip())
+        else:
+            repo.git.stash("push")
+        return "Changes stashed ✓"
+    except Exception as exc:
+        return f"Error creating stash: {exc}"
+
+
+def stash_pop(path: Path) -> str:
+    """
+    Apply and remove the top stash entry.
+    Returns the git output or a friendly message.
+    """
+    repo = _open_repo(path)
+    try:
+        result = repo.git.stash("pop")
+        return result.strip() if result.strip() else "Stash applied and removed ✓"
+    except Exception as exc:
+        return f"Error popping stash: {exc}"
+
+
+# ===================================================================
+# Commit graph
+# ===================================================================
+
+def get_commit_graph(path: Path, n: int = 40) -> str:
+    """
+    Return the ASCII commit graph produced by:
+        git log --graph --oneline --decorate -nN
+
+    Suitable for display in a Static / ScrollableContainer widget.
+    """
+    repo = _open_repo(path)
+    try:
+        return repo.git.log(
+            "--graph", "--oneline", "--decorate",
+            "--color=never", f"-n{n}",
+        )
+    except Exception as exc:
+        return f"Error loading commit graph: {exc}"
+
+
+# ===================================================================
+# File contents
+# ===================================================================
+
+def get_file_contents(path: Path, filepath: str) -> str:
+    """
+    Read the current working-tree content of a tracked file.
+    Returns the file text, or an error message if unreadable.
+    """
+    full_path = path / filepath
+    try:
+        return full_path.read_text(errors="replace")
+    except Exception as exc:
+        return f"Error reading '{filepath}': {exc}"
+
+
+def get_tracked_files(path: Path) -> list[str]:
+    """
+    Return a sorted list of all file paths tracked by git in the repo.
+    Uses ``git ls-files`` so .gitignore is automatically respected.
+    """
+    repo = _open_repo(path)
+    try:
+        ls_output = repo.git.ls_files()
+        return sorted(p for p in ls_output.splitlines() if p.strip())
+    except Exception:
+        return []

@@ -20,9 +20,12 @@ This document explains how GitPulse is structured, how data flows through the ap
 │   │  └────────────┘  │      │ │ 🔀 Diff           │ │   │
 │   │  ┌────────────┐  │      │ │ 🌿 Branches       │ │   │
 │   │  │ ListView   │  │      │ │ 🌐 Remotes        │ │   │
-│   │  │ (repos)    │  │      │ │ 🏷️  Tags          │ │   │
-│   │  └────────────┘  │      │ └───────────────────┘ │   │
-│   └──────────────────┘      └──────────────────────┘   │
+│   │  │ (repos)    │  │      │ │ 🏷️  Tags           │ │   │
+│   │  └────────────┘  │      │ │ 🌲 Tree           │ │   │
+│   └──────────────────┘      │ └───────────────────┘ │   │
+│                             └──────────────────────┘   │
+│              Modals (ModalScreen stack):              │
+│         CommitModal / NewBranchModal / CommitDiffModal │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
           │                            │
@@ -44,9 +47,13 @@ This document explains how GitPulse is structured, how data flows through the ap
 
 The root `GitPulseApp(App)` class owns:
 - The **only mutable repo state** (`_all_repos`, `repos`, `_selected_repo`)
-- The **scan lifecycle** (`_scan_and_populate`, refresh)
+- The **scan lifecycle** (`_start_scan`, `_scan_worker`, worker state handling)
 - The **search/filter logic** (`_apply_filter`)
-- **Message routing** — listens for `RepoSidebar.RepoSelected`, `RepoSidebar.SearchChanged`, and `MainPanel.BranchSwitchRequested`
+- **Message routing** — listens for:
+  - `RepoSidebar.RepoSelected`
+  - `RepoSidebar.SearchChanged`
+  - `MainPanel.BranchSwitchRequested`
+  - `MainPanel.ReloadRequested` _(new)_ — triggers sidebar rescan after commit/branch ops
 - **Keybindings** (`q`, `r`, `/`, `Escape`)
 
 Neither the sidebar nor the tabs know about each other. All cross-widget communication goes through the app.
@@ -72,15 +79,25 @@ Returns a list of `Path` objects. The sort-by-date step happens in `main.py` aft
 
 This is the **only module that imports GitPython**. Everything else is pure Python or Textual. The module has three layers:
 
-1. **Data classes** — pure immutable objects (dataclasses):
+1. **Data classes** — pure immutable objects (dataclasses):  
    `RepoInfo`, `FileStatus`, `CommitInfo`, `BranchInfo`, `StashEntry`, `RemoteInfo`, `TagInfo`
 
-2. **Private helpers** — prefixed with `_`, not for external use:
+2. **Private helpers** — prefixed with `_`, not for external use:  
    `_open_repo()`, `_determine_status()`
 
-3. **Public API functions** — called by `main.py` and `tabs.py`:
-   `get_repo_info()`, `get_status()`, `get_commits()`, `get_diff()`,
-   `get_branches()`, `switch_branch()`, `get_stashes()`, `get_remotes()`, `get_tags()`
+3. **Public API functions** — called by `main.py` and `tabs.py`:  
+
+   | Category | Functions |
+   |---|---|
+   | Read — repo summary | `get_repo_info()` |
+   | Read — file status | `get_status()`, `get_changed_files()` |
+   | Read — history | `get_commits()`, `get_stashes()`, `get_tags()` |
+   | Read — diff | `get_diff()`, `get_file_diff()`, `get_commit_diff()` |
+   | Read — refs | `get_branches()`, `get_remotes()` |
+   | Read — tree | `get_file_tree()` |
+   | **Write** — staging | `stage_files()`, `unstage_files()`, `stage_all()`, `unstage_all()` |
+   | **Write** — committing | `commit_changes()` |
+   | **Write** — branches | `switch_branch()`, `create_branch()`, `delete_branch()` |
 
 ---
 
@@ -91,7 +108,7 @@ Composes:
 - A search `Input` widget
 - A `ListView` of `RepoListItem` entries
 
-Each `RepoListItem` uses a **single `Static` with Rich markup** for the two-line display (name + badge on line 1, branch + relative time on line 2). This is intentional — Textual's layout engine does not handle nested containers inside `ListItem` reliably.
+Each `RepoListItem` uses a **single `Static` with Rich markup** for the two-line display (name + badge on line 1, branch + relative time on line 2).
 
 Emits two messages:
 - `RepoSidebar.RepoSelected` — on arrow-key navigation
@@ -99,16 +116,22 @@ Emits two messages:
 
 ---
 
-### `ui/tabs.py` — Right Panel
+### `ui/tabs.py` — Right Panel + Modal Screens
 
-Composes a `TabbedContent` with six `TabPane` children. Each pane is populated independently by a `_load_*` method called from `load_repo()`. Emits:
-- `MainPanel.BranchSwitchRequested` — when Enter is pressed on a `BranchListItem`
+Composes a `TabbedContent` with **seven** `TabPane` children. Each pane is populated independently by a `_load_*` method (lazy: first visit per repo only). Emits:
+- `MainPanel.BranchSwitchRequested` — Enter on a branch
+- `MainPanel.ReloadRequested` — after a successful commit or branch create/delete
+
+Also defines three **modal screens** pushed via `app.push_screen()`:
+- `CommitModal` — stage summary + commit message input
+- `NewBranchModal` — new branch name input
+- `CommitDiffModal` — read-only scrollable diff viewer for a single commit
 
 ---
 
 ### `ui/styles.tcss` — Theme
 
-All visual styling. Uses a Tokyo Night-inspired dark palette. See [theming.md](./theming.md) for full color reference.
+All visual styling. Uses a Tokyo Night-inspired dark palette. See [theming.md](./theming.md) for full colour reference.
 
 ---
 
@@ -118,19 +141,22 @@ All visual styling. Uses a Tokyo Night-inspired dark palette. See [theming.md](.
 
 ```
 on_mount()
-  └── call_later(_scan_and_populate)
-        ├── scanner.scan_repos(root)          → list[Path]
-        ├── git_ops.get_repo_info(path) × N   → list[RepoInfo]
-        ├── sort by last_commit_ts desc
-        ├── sidebar.populate(repos)
-        └── _select_repo(repos[0])
-              └── main_panel.load_repo(path, info)
-                    ├── _load_status()
-                    ├── _load_commits()
-                    ├── _load_diff()
-                    ├── _load_branches()
-                    ├── _load_remotes()
-                    └── _load_tags()
+  └── _start_scan()
+        └── run_worker(_scan_worker, thread=True)
+              ├── scanner.scan_repos(root)          → list[Path]
+              └── git_ops.get_repo_info(path) × N   → list[RepoInfo]
+
+on_worker_state_changed(SUCCESS)
+  ├── sidebar.populate(repos)
+  └── _select_repo(repos[0])
+        └── main_panel.load_repo(path, info)
+              ├── _load_status()    (active tab only; others lazy)
+              ├── _load_commits()
+              ├── _load_diff()
+              ├── _load_branches()
+              ├── _load_remotes()
+              ├── _load_tags()
+              └── _load_tree()
 ```
 
 ### Repo Selection (arrow keys)
@@ -167,14 +193,56 @@ User presses Enter on branch
                     └── GitPulseApp.on_main_panel_branch_switch_requested()
                           ├── git_ops.switch_branch(path, branch)
                           ├── notify(result_message)
-                          └── _scan_and_populate()
+                          └── _start_scan()
+```
+
+### Commit Flow
+
+```
+User presses 'c'
+  └── MainPanel.action_open_commit()
+        └── app.push_screen(CommitModal(staged_files), callback)
+              └── User types message, presses Enter
+                    └── CommitModal.dismiss(message)
+                          └── callback(message)
+                                ├── git_ops.commit_changes(path, message)
+                                ├── app.notify(result)
+                                ├── _reload_tab(tab-status/commits/diff)
+                                └── post MainPanel.ReloadRequested()
+                                      └── GitPulseApp.on_main_panel_reload_requested()
+                                            └── _start_scan()  (updates sidebar)
+```
+
+### Create / Delete Branch
+
+```
+User presses 'n'
+  └── MainPanel.action_new_branch()
+        └── app.push_screen(NewBranchModal(), callback)
+              └── User types name, presses Enter
+                    └── git_ops.create_branch(path, name)
+                          └── _reload_tab(tab-branches) + ReloadRequested
+
+User presses 'd' in Branches tab
+  └── MainPanel.on_key() → _delete_selected_branch()
+        ├── git_ops.delete_branch(path, name)
+        └── _reload_tab(tab-branches) + ReloadRequested
+```
+
+### View Commit Diff
+
+```
+User presses Enter or 'd' in Commits tab
+  └── MainPanel._open_commit_diff()
+        ├── git_ops.get_commit_diff(path, short_hash)
+        └── app.push_screen(CommitDiffModal(hash, msg, diff_text))
 ```
 
 ---
 
 ## Error Handling Strategy
 
-All `git_ops` functions use try/except broadly and return safe defaults (empty lists, empty strings) rather than raising. This means:
-- A corrupt or inaccessible repo won't crash the app
-- The sidebar will still show the repo with `CLEAN` status and partial data
-- Exceptions are silently swallowed — add logging if debugging is needed
+All `git_ops` functions use try/except broadly and return safe defaults (empty lists, empty strings, human-readable error messages) rather than raising. This means:
+- A corrupt or inaccessible repo won’t crash the app
+- Mutations (commit, branch ops) return a descriptive error string displayed via `app.notify()`
+- Exceptions are silently swallowed in read paths — add `from textual import log; log(exc)` if debugging is needed

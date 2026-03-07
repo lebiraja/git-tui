@@ -147,7 +147,44 @@ Quick checklist:
 
 ---
 
-### Changing the sort order of repos
+### Adding a new write operation (`git_ops.py`)
+
+Write operations mutate the repository. Follow this pattern:
+
+```python
+# git_ops.py
+def my_write_op(path: Path, arg: str) -> str:
+    """One-line summary."""
+    repo = _open_repo(path)
+    try:
+        repo.git.some_command(arg)
+        return f"Success message: {arg}"
+    except GitCommandError as exc:
+        return f"Error: {exc}"
+    except Exception as exc:
+        return f"Error: {exc}"
+```
+
+Key rules:
+- Always return a `str` (never raise).
+- On success, return a positive confirmation message.
+- On failure, return a string starting with `"Error: "`.
+- Call from `ui/tabs.py` via an action or modal callback.
+- Show the result to the user with `self.app.notify(result, timeout=3)`.
+- After mutating repo state, call `self._reload_tab(tab_id)` and post `self.post_message(self.ReloadRequested())` so the sidebar rescans.
+
+### Adding a new modal screen
+
+See the full guide in [ui_components.md → Adding a New Modal Screen](./ui_components.md#adding-a-new-modal-screen).
+
+Quick checklist:
+- [ ] Class inherits `ModalScreen`
+- [ ] `compose()` yields a `Container` with an id for CSS targeting
+- [ ] `dismiss(value)` called with the result (or `None` for cancel)
+- [ ] `on_key` handles `escape` to cancel
+- [ ] Add `ModalScreen` CSS inside `DEFAULT_CSS` on the class
+- [ ] Push with `self.app.push_screen(MyModal(), async_callback)`
+- [ ] Update `docs/ui_components.md`
 
 Repos are sorted in `GitPulseApp._scan_and_populate()`:
 
@@ -195,10 +232,12 @@ if child.is_dir() and child.name not in SKIP_DIRS:
 
 | Task | Files to edit |
 |------|--------------|
-| New git data operation | `git_ops.py`, `ui/tabs.py`, `docs/api_reference.md` |
+| New **read** git operation | `git_ops.py`, `ui/tabs.py`, `docs/api_reference.md` |
+| New **write** git operation | `git_ops.py`, `ui/tabs.py`, `main.py` (if new message), `docs/api_reference.md` |
 | New sidebar feature | `ui/sidebar.py`, `main.py`, `ui/styles.tcss` |
 | New main panel tab | `ui/tabs.py`, `ui/styles.tcss`, `docs/ui_components.md` |
-| New keybinding | `main.py`, `README.md`, `docs/index.md` |
+| New modal screen | `ui/tabs.py`, `ui/styles.tcss`, `docs/ui_components.md` |
+| New keybinding | `main.py` or `ui/tabs.py`, `docs/index.md` |
 | Theme change | `ui/styles.tcss`, `ui/sidebar.py`, `ui/tabs.py` |
 | Scanner behaviour | `scanner.py` |
 

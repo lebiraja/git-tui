@@ -339,3 +339,189 @@ Return the most recent `n` tags sorted by date descending.
 **Returns:** `list[TagInfo]`
 
 **Annotated vs lightweight tags:** For annotated tags, uses `tag_ref.tag` for date and message. For lightweight tags, uses the tagged commit's date and message.
+
+---
+
+#### `get_file_tree(path)`
+
+```python
+def get_file_tree(path: Path) -> rich.tree.Tree
+```
+
+Build a Rich `Tree` representing the repository's tracked file structure.
+
+**Returns:** A `rich.tree.Tree` ready to be rendered in a `Static` widget.
+
+**Implementation:** Uses `git ls-files` to get tracked files only (respects `.gitignore`). Builds a nested dict then renders it recursively, sorting directories before files. Files are colour-coded by extension.
+
+---
+
+### Write Operations
+
+All write functions return a human-readable **result string** — either a success message or an error message beginning with `"Error: "`. They never raise; errors are always surfaced via the return value.
+
+---
+
+#### `stage_files(path, files)`
+
+```python
+def stage_files(path: Path, files: list[str]) -> str
+```
+
+Stage (git add) specific files.
+
+**Parameters:**
+- `path` — Repo root.
+- `files` — List of relative file paths to stage.
+
+**Returns:** `"Staged N file(s)"` or an error string.
+
+---
+
+#### `unstage_files(path, files)`
+
+```python
+def unstage_files(path: Path, files: list[str]) -> str
+```
+
+Unstage (git reset HEAD) specific files.
+
+**Parameters:**
+- `path` — Repo root.
+- `files` — List of relative file paths to unstage.
+
+**Returns:** `"Unstaged N file(s)"` or an error string.
+
+---
+
+#### `stage_all(path)`
+
+```python
+def stage_all(path: Path) -> str
+```
+
+Stage all modified and untracked files (`git add -A`).
+
+**Returns:** `"Staged all changes"` or an error string.
+
+---
+
+#### `unstage_all(path)`
+
+```python
+def unstage_all(path: Path) -> str
+```
+
+Unstage everything (`git reset HEAD`).
+
+**Returns:** `"Unstaged all changes"` or an error string.
+
+---
+
+#### `commit_changes(path, message)`
+
+```python
+def commit_changes(path: Path, message: str) -> str
+```
+
+Commit currently staged files.
+
+**Parameters:**
+- `path` — Repo root.
+- `message` — Commit message string. Must be non-empty.
+
+**Returns:** A git-style result string like `[main ab12cd3] My commit` on success, or an error string.
+
+**Validation:**
+- Returns an error if `message` is empty or whitespace.
+- Returns an error if nothing is currently staged (`repo.index.diff("HEAD")` is empty).
+
+---
+
+#### `create_branch(path, name, checkout=True)`
+
+```python
+def create_branch(path: Path, name: str, checkout: bool = True) -> str
+```
+
+Create a new local branch. Optionally switch to it immediately.
+
+**Parameters:**
+- `path` — Repo root.
+- `name` — New branch name.
+- `checkout` — If `True` (default), also switches to the new branch.
+
+**Returns:** `"Created and switched to branch 'name'"` or `"Created branch 'name'"`, or an error string.
+
+---
+
+#### `delete_branch(path, name, force=False)`
+
+```python
+def delete_branch(path: Path, name: str, force: bool = False) -> str
+```
+
+Delete a local branch.
+
+**Parameters:**
+- `path` — Repo root.
+- `name` — Branch to delete.
+- `force` — If `True`, passes `-D` instead of `-d` (allows deleting unmerged branches).
+
+**Returns:** `"Deleted branch 'name'"` or an error string.
+
+**Guard:** Returns an error message if `name` is the currently checked-out branch.
+
+---
+
+#### `get_changed_files(path)`
+
+```python
+def get_changed_files(path: Path) -> dict[str, list[str]]
+```
+
+Return all changed files as a categorised dictionary.
+
+**Returns:**
+```python
+{
+    "staged":    list[str],   # relative paths, index vs HEAD
+    "unstaged":  list[str],   # working tree vs index
+    "untracked": list[str],   # not tracked by git
+}
+```
+
+Similar to `get_status()` but returns a plain `dict` instead of a `FileStatus` dataclass — used by the Diff tab file picker and the Commit modal.
+
+---
+
+#### `get_file_diff(path, filepath, staged=False)`
+
+```python
+def get_file_diff(path: Path, filepath: str, staged: bool = False) -> str
+```
+
+Return the diff for a single file.
+
+**Parameters:**
+- `path` — Repo root.
+- `filepath` — Relative file path.
+- `staged` — If `True`, runs `git diff --cached -- filepath` (index vs HEAD). If `False`, runs `git diff -- filepath` (working tree vs index).
+
+**Returns:** A unified diff string, or `"No diff for {filepath}"` if the file has no diff, or an error string.
+
+---
+
+#### `get_commit_diff(path, commit_hash)`
+
+```python
+def get_commit_diff(path: Path, commit_hash: str) -> str
+```
+
+Return the full diff introduced by a specific commit (vs its parent).
+
+**Parameters:**
+- `path` — Repo root.
+- `commit_hash` — Full or abbreviated commit SHA.
+
+**Returns:** A unified diff string. For the initial commit (no parent), uses `git show`. Returns `"No changes in this commit."` if the diff is empty, or an error string on failure.

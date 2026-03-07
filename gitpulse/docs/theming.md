@@ -146,17 +146,108 @@ To change the appearance of these elements, edit the markup strings in `ui/sideb
 
 ## Diff Syntax Highlighting
 
-The Diff tab uses `rich.syntax.Syntax` with `theme="monokai"`. To change the theme:
+The Diff tab and CommitDiffModal use `rich.syntax.Syntax` with `theme="monokai"`. To change the theme:
 
 ```python
-# In ui/tabs.py, _load_diff():
-syntax = Syntax(
-    diff_text,
-    "diff",
-    theme="monokai",   # ← Change this
-    line_numbers=True,
-    word_wrap=True,
-)
+# In ui/tabs.py, _show_file_diff() and CommitDiffModal.compose():
+Syntax(diff_text, "diff", theme="monokai", ...)  # ← Change "monokai"
 ```
 
-Popular alternatives: `"github-dark"`, `"dracula"`, `"one-dark"`, `"solarized-dark"`. Run `python -c "from rich.syntax import Syntax; print(Syntax.THEMES)"` for the full list.
+Popular alternatives: `"github-dark"`, `"dracula"`, `"one-dark"`, `"solarized-dark"`. Run `python3 -c "from rich.syntax import Syntax; print(list(Syntax.THEMES)[:10])"` for the full list.
+
+---
+
+## New Layout Selectors (v1.2+)
+
+### Status tab file list
+
+```css
+StatusFileItem {
+    height: 1;
+    padding: 0 1;
+    background: #1a1b26;
+}
+StatusFileItem:hover { background: #1f2335; }
+#status-file-list:focus > StatusFileItem.--highlight { background: #283457; }
+```
+
+### Diff tab split layout
+
+The Diff tab uses a two-panel horizontal layout:
+
+```
+#diff-layout (Horizontal, height: 1fr)
+├── #diff-file-panel (Vertical, width: 30)   ← file picker
+└── #diff-view-panel (ScrollableContainer)   ← syntax diff
+```
+
+Key selectors:
+```css
+#diff-file-panel {
+    width: 30;         /* file picker column width */
+    border-right: vkey #3b4261;
+}
+
+DiffFileItem {
+    height: 1;
+    padding: 0 1;
+}
+DiffFileItem:hover { background: #1f2335; }
+#diff-file-list:focus > DiffFileItem.--highlight { background: #283457; }
+
+#diff-view-panel {
+    width: 1fr;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+```
+
+### Modal dialogs
+
+Modal dialogs define their own `DEFAULT_CSS`. The container elements use these selectors:
+
+```css
+/* CommitModal */
+#commit-dialog { width: 64; background: #1e2030; border: thick #7aa2f7; }
+
+/* NewBranchModal */
+#new-branch-dialog { width: 52; background: #1e2030; border: thick #bb9af7; }
+
+/* CommitDiffModal */
+#cdiff-frame { width: 92%; height: 88%; background: #1e2030; border: thick #7aa2f7; }
+#cdiff-scroll { width: 100%; height: 1fr; }
+```
+
+To change modal border colours, edit the `border:` values inside the respective `DEFAULT_CSS` class attributes in `ui/tabs.py`.
+
+### Hint bars
+
+All tab-bottom hint bars share the same selectors:
+```css
+#status-hints,
+#commits-hints,
+#branch-hints,
+#diff-footer {
+    height: 1;
+    dock: bottom;
+    background: #1e2030;
+    color: #565f89;
+    padding: 0 1;
+    border-top: solid #3b4261;
+}
+```
+
+### Scroll containers (Tree, Remotes)
+
+Tree and Remotes tabs use `ScrollableContainer` so all content is accessible regardless of terminal height:
+
+```css
+#tree-scroll, #remotes-scroll {
+    width: 100%;
+    height: 1fr;
+    background: #1a1b26;
+    padding: 1 2;
+}
+```
+
+The inner `Static` widgets (`#tree-content`, `#remotes-content`) use `height: auto` to expand to their content rather than being clipped.

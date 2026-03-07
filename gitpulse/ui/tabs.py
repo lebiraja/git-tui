@@ -530,18 +530,16 @@ class DiffFileItem(ListItem):
     """
 
     def __init__(self, filepath: str, status: str, **kwargs) -> None:
-        super().__init__(**kwargs)
         self.filepath = filepath
         self.file_status = status  # "staged" | "unstaged" | "untracked"
-
-    def compose(self) -> ComposeResult:
-        if self.file_status == "staged":
-            label = f"[bold #9ece6a]+ {self.filepath}[/]"
-        elif self.file_status == "unstaged":
-            label = f"[#e0af68]~ {self.filepath}[/]"
+        t = Text(overflow="ellipsis", no_wrap=True)
+        if status == "staged":
+            t.append(f"+ {filepath}", style="bold #9ece6a")
+        elif status == "unstaged":
+            t.append(f"~ {filepath}", style="#e0af68")
         else:
-            label = f"[dim #f7768e]? {self.filepath}[/]"
-        yield Static(label, markup=True)
+            t.append(f"? {filepath}", style="dim #f7768e")
+        super().__init__(Static(t), **kwargs)
 
 
 # ===================================================================
@@ -559,21 +557,19 @@ class StatusFileItem(ListItem):
     """
 
     def __init__(self, filepath: str, status: str, **kwargs) -> None:
-        super().__init__(**kwargs)
         self.filepath = filepath
         self.file_status = status  # "staged" | "unstaged" | "untracked"
-
-    def compose(self) -> ComposeResult:
-        if self.file_status == "staged":
-            icon = _ICON_STAGED
-            label = f"[bold #9ece6a]{icon} [staged]    {self.filepath}[/]"
-        elif self.file_status == "unstaged":
-            icon = _ICON_UNSTAGED
-            label = f"[#e0af68]{icon} [unstaged]  {self.filepath}[/]"
+        t = Text(overflow="ellipsis", no_wrap=True)
+        if status == "staged":
+            t.append("+ staged    ", style="bold #9ece6a")
+            t.append(filepath, style="#9ece6a")
+        elif status == "unstaged":
+            t.append("~ unstaged  ", style="#e0af68")
+            t.append(filepath, style="#e0af68")
         else:
-            icon = _ICON_UNTRACKED
-            label = f"[#f7768e]{icon} [untracked] {self.filepath}[/]"
-        yield Static(label, markup=True)
+            t.append("? untracked ", style="#f7768e")
+            t.append(filepath, style="#f7768e")
+        super().__init__(Static(t), **kwargs)
 
 
 # ===================================================================

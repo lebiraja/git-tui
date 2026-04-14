@@ -636,7 +636,7 @@ class MainPanel(Widget):
             # ── Status ──
             with TabPane("📋 Status", id="tab-status"):
                 yield Static(
-                    "[dim italic]← Select a repository[/]",
+                    "[dim italic]📋 Select a repository to view working tree status[/]",
                     id="status-summary",
                     markup=True,
                 )
@@ -652,7 +652,7 @@ class MainPanel(Widget):
                 with Vertical(id="commits-layout"):
                     with ScrollableContainer(id="commits-graph-scroll"):
                         yield Static(
-                            "[dim italic]← Select a repository to view graph[/]",
+                            "[dim italic]📝 Select a repository to view commit graph[/]",
                             id="commits-graph",
                             markup=True,
                         )
@@ -675,7 +675,7 @@ class MainPanel(Widget):
                         yield ListView(id="diff-file-list")
                     with ScrollableContainer(id="diff-view-panel"):
                         yield Static(
-                            "[dim italic]← Select a file[/]",
+                            "[dim italic]🔀 Select a file from the left panel to view its diff[/]",
                             id="diff-content",
                             markup=True,
                         )
@@ -698,7 +698,7 @@ class MainPanel(Widget):
             with TabPane("🌐 Remotes", id="tab-remotes"):
                 with ScrollableContainer(id="remotes-scroll"):
                     yield Static(
-                        "[dim italic]← Select a repository to view remotes[/]",
+                        "[dim italic]🌐 Select a repository to view remote configuration[/]",
                         id="remotes-content",
                         markup=True,
                     )
@@ -714,7 +714,7 @@ class MainPanel(Widget):
 
             # ── Tree ──
             with TabPane("🌲 Tree", id="tab-tree"):
-                yield Tree("← Select a repository", id="tree-widget")
+                yield Tree("🌲 Select a repository to browse files", id="tree-widget")
                 yield Static(
                     "[dim #565f89]  ↑↓ navigate  Enter = preview file[/]",
                     id="tree-hints",

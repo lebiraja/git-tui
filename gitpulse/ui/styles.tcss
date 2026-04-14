@@ -57,6 +57,15 @@ Screen {
     border-bottom: solid #7aa2f7;
 }
 
+/* General input focus styling */
+Input:focus {
+    border: tall #7aa2f7;
+}
+
+Input.-valid:focus {
+    border: tall #9ece6a;
+}
+
 #repo-list {
     background: #16161e;
     scrollbar-color: #3b4261;
@@ -335,6 +344,23 @@ Footer > .footer--key {
 
 Footer > .footer--description {
     color: #a9b1d6;
+}
+
+/* ---------- Buttons ---------- */
+Button:focus {
+    text-style: bold reverse;
+}
+
+Button.-primary:focus {
+    border: tall #7aa2f7;
+}
+
+Button.-success:focus {
+    border: tall #9ece6a;
+}
+
+Button.-warning:focus {
+    border: tall #e0af68;
 }
 
 /* ---------- Header ---------- */

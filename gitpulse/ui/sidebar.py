@@ -86,8 +86,13 @@ class RepoListItem(ListItem):
         line1 = f"[bold #c0caf5]{info.name}[/]  {badge}"
         # Line 2: branch  |  relative time  |  sparkline
         line2 = f"  [#bb9af7]⎇ {info.branch}[/]  [dim #565f89]⏱ {rel}[/]  {spark}"
+        # Line 3: truncated repo path for disambiguation
+        path_str = str(info.path)
+        if len(path_str) > 38:
+            path_str = "…" + path_str[-37:]
+        line3 = f"  [dim #3b4261]{path_str}[/]"
 
-        yield Static(f"{line1}\n{line2}", markup=True)
+        yield Static(f"{line1}\n{line2}\n{line3}", markup=True)
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +147,23 @@ class RepoSidebar(Static):
         """Clear and re-populate the repo list."""
         list_view: ListView = self.query_one("#repo-list", ListView)
         list_view.clear()
+
+        if not repos:
+            # Friendly empty state
+            from textual.widgets import ListItem as _LI
+            list_view.append(_LI(Static(
+                "[dim italic #565f89]\n  📂  No repositories found\n"
+                "      Try a different root or\n"
+                "      press r to rescan\n[/]",
+                markup=True,
+            )))
+            return
+
         for info in repos:
             list_view.append(RepoListItem(info))
 
         # Auto-select first item
-        if repos:
-            list_view.index = 0
+        list_view.index = 0
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Forward the highlight event as a RepoSelected message."""

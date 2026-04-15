@@ -25,15 +25,15 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 def _make_badge(info: RepoInfo) -> str:
-    """Build a Rich markup badge string with optional file count."""
+    """Build a Rich markup badge string with icon and optional file count."""
     count = info.modified_count
     if info.status == RepoStatus.CLEAN:
-        return "[bold white on #2d7d46] ✓ CLEAN [/]"
+        return "[bold white on #2d7d46] ✔ Clean [/]"
     elif info.status == RepoStatus.MODIFIED:
-        label = f" ✎ MODIFIED ({count}) " if count else " ✎ MODIFIED "
+        label = f" ● Modified ({count}) " if count else " ● Modified "
         return f"[bold #1a1b26 on #e0af68]{label}[/]"
     else:  # UNTRACKED
-        label = f" ? UNTRACKED ({count}) " if count else " ? UNTRACKED "
+        label = f" ○ Untracked ({count}) " if count else " ○ Untracked "
         return f"[bold white on #db4b4b]{label}[/]"
 
 
@@ -86,13 +86,18 @@ class RepoListItem(ListItem):
         line1 = f"[bold #c0caf5]{info.name}[/]  {badge}"
         # Line 2: branch  |  relative time  |  sparkline
         line2 = f"  [#bb9af7]⎇ {info.branch}[/]  [dim #565f89]⏱ {rel}[/]  {spark}"
-        # Line 3: truncated repo path for disambiguation
+        # Line 3: truncated last commit message for quick context
+        commit_msg = info.last_commit_msg
+        if len(commit_msg) > 36:
+            commit_msg = commit_msg[:35] + "…"
+        line3 = f"  [dim #565f89]💬 {commit_msg}[/]" if commit_msg else "  [dim #3b4261]no commits[/]"
+        # Line 4: truncated repo path for disambiguation
         path_str = str(info.path)
         if len(path_str) > 38:
             path_str = "…" + path_str[-37:]
-        line3 = f"  [dim #3b4261]{path_str}[/]"
+        line4 = f"  [dim #3b4261]{path_str}[/]"
 
-        yield Static(f"{line1}\n{line2}\n{line3}", markup=True)
+        yield Static(f"{line1}\n{line2}\n{line3}\n{line4}", markup=True)
 
 
 # ---------------------------------------------------------------------------

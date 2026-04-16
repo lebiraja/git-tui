@@ -309,6 +309,20 @@ Tree > .tree--guides-selected {
     color: #bb9af7;
 }
 
+Tree > .tree--cursor {
+    background: #283457;
+    color: #c0caf5;
+    text-style: bold;
+}
+
+Tree > .tree--highlight {
+    background: #1f2335;
+}
+
+Tree > .tree--highlight-line {
+    color: #565f89;
+}
+
 /* ---------- Branch list ---------- */
 #branch-list {
     background: #1a1b26;

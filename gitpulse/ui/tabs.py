@@ -819,21 +819,21 @@ class MainPanel(Widget):
         else:
             if fs.staged:
                 file_list.append(ListItem(Static(
-                    f"[bold #9ece6a dim]── Staged ({len(fs.staged)}) ──────────────────[/]",
+                    f"[bold #9ece6a]  ✔ Staged[/] [dim #565f89]({len(fs.staged)} file{'s' if len(fs.staged) != 1 else ''})[/]",
                     markup=True,
                 )))
                 for f in fs.staged:
                     file_list.append(StatusFileItem(f, "staged"))
             if fs.unstaged:
                 file_list.append(ListItem(Static(
-                    f"[bold #e0af68 dim]── Unstaged ({len(fs.unstaged)}) ────────────────[/]",
+                    f"[bold #e0af68]  ● Unstaged[/] [dim #565f89]({len(fs.unstaged)} file{'s' if len(fs.unstaged) != 1 else ''})[/]",
                     markup=True,
                 )))
                 for f in fs.unstaged:
                     file_list.append(StatusFileItem(f, "unstaged"))
             if fs.untracked:
                 file_list.append(ListItem(Static(
-                    f"[bold #f7768e dim]── Untracked ({len(fs.untracked)}) ───────────────[/]",
+                    f"[bold #f7768e]  ○ Untracked[/] [dim #565f89]({len(fs.untracked)} file{'s' if len(fs.untracked) != 1 else ''})[/]",
                     markup=True,
                 )))
                 for f in fs.untracked:

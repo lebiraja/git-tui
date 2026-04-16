@@ -870,6 +870,20 @@ class MainPanel(Widget):
         if not commits:
             table.add_row("—", "No commits", "", "", "", "")
             return
+
+        # ── Stats summary bar ─────────────────────────────────────────
+        total_ins = sum(c.insertions for c in commits)
+        total_del = sum(c.deletions for c in commits)
+        total_files = sum(c.files_changed for c in commits)
+        authors = len(set(c.author for c in commits))
+        hints: Static = self.query_one("#commits-hints", Static)
+        hints.update(
+            f"[dim #565f89]  {len(commits)} commits · "
+            f"[#9ece6a]+{total_ins}[/dim #565f89] / [#f7768e]-{total_del}[/dim #565f89] lines · "
+            f"{total_files} files · {authors} author{'s' if authors != 1 else ''} · "
+            f"Enter or d = view diff[/]"
+        )
+
         for c in commits:
             pm = Text()
             pm.append(f"+{c.insertions}", style="bold #9ece6a")
@@ -985,16 +999,28 @@ class MainPanel(Widget):
                 _build(child, d[name], f"{prefix}{name}/")
             for name in files:
                 ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+                # Language-specific file icons for visual identification
+                _FILE_ICONS = {
+                    "py": "🐍", "js": "🟨", "ts": "🟦", "go": "🐹",
+                    "rs": "⚙️", "c": "🔧", "cpp": "🔧", "java": "☕",
+                    "md": "📝", "rst": "📝", "txt": "📝",
+                    "json": "📋", "yaml": "📋", "yml": "📋",
+                    "toml": "📋", "ini": "📋", "cfg": "📋", "env": "🔒",
+                    "sh": "📜", "bash": "📜", "zsh": "📜",
+                    "html": "🌐", "css": "🎨", "tcss": "🎨",
+                    "sql": "🗄️",
+                }
+                icon = _FILE_ICONS.get(ext, "📄")
                 if ext in ("py", "js", "ts", "go", "rs", "c", "cpp", "java"):
-                    label = f"[#9ece6a]  {name}[/]"
+                    label = f"[#9ece6a]{icon} {name}[/]"
                 elif ext in ("md", "rst", "txt"):
-                    label = f"[#e0af68]  {name}[/]"
+                    label = f"[#e0af68]{icon} {name}[/]"
                 elif ext in ("json", "yaml", "yml", "toml", "ini", "cfg", "env"):
-                    label = f"[#7dcfff]  {name}[/]"
+                    label = f"[#7dcfff]{icon} {name}[/]"
                 elif ext in ("sh", "bash", "zsh"):
-                    label = f"[#f7768e]  {name}[/]"
+                    label = f"[#f7768e]{icon} {name}[/]"
                 else:
-                    label = f"[#c0caf5]  {name}[/]"
+                    label = f"[#c0caf5]{icon} {name}[/]"
                 node.add_leaf(
                     label,
                     data={"type": "file", "path": f"{prefix}{name}"},

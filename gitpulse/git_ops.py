@@ -426,6 +426,164 @@ def get_tags(path: Path, n: int = 15) -> list[TagInfo]:
     return tags[:n]
 
 
+def stage_files(path: Path, files: list[str]) -> str:
+    """
+    Stage (git add) a list of files.
+    Returns a success/error message.
+    """
+    repo = _open_repo(path)
+    try:
+        repo.index.add(files)
+        return f"Staged {len(files)} file(s)"
+    except Exception as exc:
+        return f"Error staging files: {exc}"
+
+
+def unstage_files(path: Path, files: list[str]) -> str:
+    """
+    Unstage (git reset HEAD) a list of files.
+    Returns a success/error message.
+    """
+    repo = _open_repo(path)
+    try:
+        repo.index.reset("HEAD", paths=files)
+        return f"Unstaged {len(files)} file(s)"
+    except Exception as exc:
+        return f"Error unstaging files: {exc}"
+
+
+def stage_all(path: Path) -> str:
+    """Stage all modified & untracked files (git add -A)."""
+    repo = _open_repo(path)
+    try:
+        repo.git.add("-A")
+        return "Staged all changes"
+    except Exception as exc:
+        return f"Error staging all: {exc}"
+
+
+def unstage_all(path: Path) -> str:
+    """Unstage everything (git reset HEAD)."""
+    repo = _open_repo(path)
+    try:
+        repo.git.reset("HEAD")
+        return "Unstaged all changes"
+    except Exception as exc:
+        return f"Error unstaging all: {exc}"
+
+
+def commit_changes(path: Path, message: str) -> str:
+    """
+    Commit currently staged files with `message`.
+    Returns a success/error message.
+    """
+    repo = _open_repo(path)
+    try:
+        if not message.strip():
+            return "Error: commit message cannot be empty"
+        # Check there is something staged
+        try:
+            staged = list(repo.index.diff("HEAD"))
+        except Exception:
+            staged = []
+        if not staged:
+            return "Nothing staged to commit. Stage files first."
+        commit_obj = repo.index.commit(message.strip())
+        short = commit_obj.hexsha[:7]
+        first_line = message.strip().split("\n")[0][:60]
+        return f"[{repo.active_branch.name} {short}] {first_line}"
+    except Exception as exc:
+        return f"Error committing: {exc}"
+
+
+def create_branch(path: Path, name: str, checkout: bool = True) -> str:
+    """
+    Create a new local branch. If `checkout` is True, also switch to it.
+    """
+    repo = _open_repo(path)
+    try:
+        branch = repo.create_head(name)
+        if checkout:
+            branch.checkout()
+            return f"Created and switched to branch '{name}'"
+        return f"Created branch '{name}'"
+    except Exception as exc:
+        return f"Error creating branch: {exc}"
+
+
+def delete_branch(path: Path, name: str, force: bool = False) -> str:
+    """
+    Delete a local branch. Pass `force=True` to force-delete unmerged branch.
+    """
+    repo = _open_repo(path)
+    try:
+        # Cannot delete the currently checked-out branch
+        current = None
+        try:
+            current = repo.active_branch.name
+        except Exception:
+            pass
+        if current == name:
+            return f"Cannot delete the currently checked-out branch '{name}'"
+        flag = "-D" if force else "-d"
+        repo.git.branch(flag, name)
+        return f"Deleted branch '{name}'"
+    except Exception as exc:
+        return f"Error deleting branch: {exc}"
+
+
+def get_commit_diff(path: Path, commit_hash: str) -> str:
+    """
+    Return the full diff introduced by a specific commit (vs its parent).
+    """
+    repo = _open_repo(path)
+    try:
+        commit = repo.commit(commit_hash)
+        if commit.parents:
+            diff_text = repo.git.diff(commit.parents[0].hexsha, commit.hexsha)
+        else:
+            # Initial commit — diff against empty tree
+            diff_text = repo.git.show("--format=", commit.hexsha)
+        return diff_text if diff_text else "No changes in this commit."
+    except Exception as exc:
+        return f"Error getting commit diff: {exc}"
+
+
+def get_file_diff(path: Path, filepath: str, staged: bool = False) -> str:
+    """
+    Return the diff for a single file.
+    `staged=True` compares index vs HEAD; `staged=False` compares working tree vs index.
+    """
+    repo = _open_repo(path)
+    try:
+        if staged:
+            diff = repo.git.diff("--cached", "--", filepath)
+        else:
+            diff = repo.git.diff("--", filepath)
+        return diff if diff else f"No diff for {filepath}"
+    except Exception as exc:
+        return f"Error getting file diff: {exc}"
+
+
+def get_changed_files(path: Path) -> dict[str, list[str]]:
+    """
+    Return a dict with keys 'staged', 'unstaged', 'untracked' — lists of file paths.
+    Similar to get_status() but returns a plain dict for easier consumption.
+    """
+    repo = _open_repo(path)
+    result: dict[str, list[str]] = {"staged": [], "unstaged": [], "untracked": []}
+    try:
+        try:
+            result["staged"] = [d.a_path or d.b_path for d in repo.index.diff("HEAD")]
+        except Exception:
+            result["staged"] = []
+        result["unstaged"] = [d.a_path or d.b_path for d in repo.index.diff(None)]
+        result["untracked"] = list(repo.untracked_files)
+    except Exception:
+        pass
+    return result
+
+
 def get_file_tree(path: Path) -> "rich.tree.Tree":
     """
     Build a Rich Tree representing the repository's tracked file structure.
@@ -502,3 +660,133 @@ def get_file_tree(path: Path) -> "rich.tree.Tree":
 
     build_tree(rich_tree, root_dict)
     return rich_tree
+
+
+# ===================================================================
+# Remote operations
+# ===================================================================
+
+def git_fetch(path: Path, remote_name: str = "") -> str:
+    """
+    Fetch from remote(s). If *remote_name* is empty, fetches all remotes.
+    Returns a human-readable status message.
+    """
+    repo = _open_repo(path)
+    try:
+        if remote_name:
+            repo.git.fetch(remote_name)
+            return f"Fetched from '{remote_name}' ✓"
+        else:
+            repo.git.fetch("--all")
+            return "Fetched from all remotes ✓"
+    except Exception as exc:
+        return f"Error fetching: {exc}"
+
+
+def git_pull(path: Path) -> str:
+    """
+    Pull from the current tracking branch.
+    Returns the git output or a friendly message.
+    """
+    repo = _open_repo(path)
+    try:
+        result = repo.git.pull()
+        return result.strip() if result.strip() else "Already up to date ✓"
+    except Exception as exc:
+        return f"Error pulling: {exc}"
+
+
+def git_push(path: Path) -> str:
+    """
+    Push the current branch to its tracking remote.
+    Returns the git output or a friendly message.
+    """
+    repo = _open_repo(path)
+    try:
+        result = repo.git.push()
+        return result.strip() if result.strip() else "Push successful ✓"
+    except Exception as exc:
+        return f"Error pushing: {exc}"
+
+
+# ===================================================================
+# Stash operations
+# ===================================================================
+
+def stash_create(path: Path, message: str = "") -> str:
+    """
+    Create a new stash from the current working-tree changes.
+    Returns a status message.
+    """
+    repo = _open_repo(path)
+    try:
+        if message.strip():
+            repo.git.stash("push", "-m", message.strip())
+        else:
+            repo.git.stash("push")
+        return "Changes stashed ✓"
+    except Exception as exc:
+        return f"Error creating stash: {exc}"
+
+
+def stash_pop(path: Path) -> str:
+    """
+    Apply and remove the top stash entry.
+    Returns the git output or a friendly message.
+    """
+    repo = _open_repo(path)
+    try:
+        result = repo.git.stash("pop")
+        return result.strip() if result.strip() else "Stash applied and removed ✓"
+    except Exception as exc:
+        return f"Error popping stash: {exc}"
+
+
+# ===================================================================
+# Commit graph
+# ===================================================================
+
+def get_commit_graph(path: Path, n: int = 40) -> str:
+    """
+    Return the ASCII commit graph produced by:
+        git log --graph --oneline --decorate -nN
+
+    Suitable for display in a Static / ScrollableContainer widget.
+    """
+    repo = _open_repo(path)
+    try:
+        return repo.git.log(
+            "--graph", "--oneline", "--decorate",
+            "--color=never", f"-n{n}",
+        )
+    except Exception as exc:
+        return f"Error loading commit graph: {exc}"
+
+
+# ===================================================================
+# File contents
+# ===================================================================
+
+def get_file_contents(path: Path, filepath: str) -> str:
+    """
+    Read the current working-tree content of a tracked file.
+    Returns the file text, or an error message if unreadable.
+    """
+    full_path = path / filepath
+    try:
+        return full_path.read_text(errors="replace")
+    except Exception as exc:
+        return f"Error reading '{filepath}': {exc}"
+
+
+def get_tracked_files(path: Path) -> list[str]:
+    """
+    Return a sorted list of all file paths tracked by git in the repo.
+    Uses ``git ls-files`` so .gitignore is automatically respected.
+    """
+    repo = _open_repo(path)
+    try:
+        ls_output = repo.git.ls_files()
+        return sorted(p for p in ls_output.splitlines() if p.strip())
+    except Exception:
+        return []

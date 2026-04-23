@@ -165,6 +165,8 @@ class GitPulseApp(App):
     def _select_repo(self, repo_info: RepoInfo) -> None:
         """Load a repo's data into the main panel."""
         self._selected_repo = repo_info
+        # Update header subtitle to reflect the active repo + branch
+        self.sub_title = f"{repo_info.name}  ·  {repo_info.branch}"
         main: MainPanel = self.query_one("#main-panel", MainPanel)
         main.load_repo(repo_info.path, repo_info)
 
@@ -206,11 +208,18 @@ class GitPulseApp(App):
 
         # Refresh the selected repo's data
         updated_info = get_repo_info(self._selected_repo.path)
-        self._selected_repo = updated_info
-        main: MainPanel = self.query_one("#main-panel", MainPanel)
-        main.load_repo(updated_info.path, updated_info)
+        self._select_repo(updated_info)
 
         # Also kick off a background rescan to update the sidebar
+        self._start_scan()
+
+    def on_main_panel_reload_requested(self, message: MainPanel.ReloadRequested) -> None:
+        """Fired after a commit or branch operation — refresh sidebar entry."""
+        if self._selected_repo is None:
+            return
+        updated_info = get_repo_info(self._selected_repo.path)
+        self._selected_repo = updated_info
+        # Rescan to update sidebar badges/timestamps
         self._start_scan()
 
 

@@ -16,9 +16,9 @@ Screen {
 }
 
 #sidebar-container {
-    width: 36;
-    min-width: 30;
-    max-width: 50;
+    width: 46;
+    min-width: 32;
+    max-width: 58;
     background: #16161e;
     border-right: vkey #3b4261;
 }
@@ -55,6 +55,15 @@ Screen {
 
 #search-input:focus {
     border-bottom: solid #7aa2f7;
+}
+
+/* General input focus styling */
+Input:focus {
+    border: tall #7aa2f7;
+}
+
+Input.-valid:focus {
+    border: tall #9ece6a;
 }
 
 #repo-list {
@@ -151,20 +160,24 @@ DataTable > .datatable--odd-row {
 }
 
 /* ---------- Status / Diff / Remotes panels ---------- */
-#status-content {
-    height: 1fr;
-    background: #1a1b26;
-    padding: 1 1;
-}
-
-#diff-content {
-    height: 1fr;
+#status-summary {
+    height: auto;
     background: #1a1b26;
     padding: 0 1;
-    overflow-y: auto;
 }
 
-#diff-footer {
+#status-file-list {
+    height: 1fr;
+    background: #1a1b26;
+    scrollbar-color: #3b4261;
+}
+
+#status-hints,
+#commits-hints,
+#branch-hints,
+#diff-footer,
+#remotes-hints,
+#tree-hints {
     height: 1;
     dock: bottom;
     background: #1e2030;
@@ -173,23 +186,150 @@ DataTable > .datatable--odd-row {
     border-top: solid #3b4261;
 }
 
-#remotes-content {
+StatusFileItem {
+    height: 1;
+    padding: 0 1;
+    background: #1a1b26;
+    border-bottom: solid #1f2335;
+}
+
+StatusFileItem:hover {
+    background: #1f2335;
+}
+
+#status-file-list:focus > StatusFileItem.--highlight {
+    background: #283457;
+}
+
+/* ---------- Diff tab layout ---------- */
+#diff-layout {
+    height: 1fr;
+    layout: horizontal;
+}
+
+#diff-file-panel {
+    width: 30;
+    min-width: 22;
+    background: #16161e;
+    border-right: vkey #3b4261;
+}
+
+#diff-file-header {
+    height: 1;
+    background: #1e2030;
+    padding: 0 1;
+    color: #7aa2f7;
+    text-style: bold;
+}
+
+#diff-file-list {
+    height: 1fr;
+    background: #16161e;
+    scrollbar-color: #3b4261;
+}
+
+DiffFileItem {
+    height: 1;
+    padding: 0 1;
+    background: #16161e;
+}
+
+DiffFileItem:hover {
+    background: #1f2335;
+}
+
+#diff-file-list:focus > DiffFileItem.--highlight {
+    background: #283457;
+}
+
+#diff-view-panel {
+    width: 1fr;
+    background: #1a1b26;
+    padding: 0 1;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+#diff-content {
+    background: #1a1b26;
+    height: auto;
+}
+
+/* ---------- Remotes + Tree panels ---------- */
+#remotes-scroll {
+    width: 100%;
     height: 1fr;
     background: #1a1b26;
     padding: 1 1;
 }
 
-#tree-content {
+#remotes-content {
+    background: #1a1b26;
+    height: auto;
+}
+
+/* ---------- Commit graph ---------- */
+#commits-layout {
+    height: 1fr;
+    layout: vertical;
+}
+
+#commits-graph-scroll {
+    width: 100%;
+    height: 12;
+    background: #16161e;
+    border: solid #3b4261;
+    padding: 0 1;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+#commits-graph {
+    height: auto;
+    background: #16161e;
+}
+
+/* ---------- Interactive file tree ---------- */
+#tree-widget {
+    width: 100%;
     height: 1fr;
     background: #1a1b26;
-    padding: 1 2;
-    overflow-y: auto;
+    padding: 0 1;
+}
+
+Tree > .tree--guides {
+    color: #3b4261;
+}
+
+Tree > .tree--guides-hover {
+    color: #7aa2f7;
+}
+
+Tree > .tree--guides-selected {
+    color: #bb9af7;
+}
+
+Tree > .tree--cursor {
+    background: #283457;
+    color: #c0caf5;
+    text-style: bold;
+}
+
+Tree > .tree--highlight {
+    background: #1f2335;
+}
+
+Tree > .tree--highlight-line {
+    color: #565f89;
 }
 
 /* ---------- Branch list ---------- */
 #branch-list {
     background: #1a1b26;
     height: 1fr;
+    scrollbar-color: #3b4261;
+    scrollbar-color-hover: #7aa2f7;
+    scrollbar-color-active: #bb9af7;
 }
 
 BranchListItem {
@@ -207,6 +347,15 @@ BranchListItem:hover {
     background: #283457;
 }
 
+/* Branch list zebra-striping for better scanability */
+BranchListItem:even {
+    background: #1a1b26;
+}
+
+BranchListItem:odd {
+    background: #1e2030;
+}
+
 /* ---------- Footer ---------- */
 Footer {
     background: #1e2030;
@@ -221,6 +370,23 @@ Footer > .footer--key {
 
 Footer > .footer--description {
     color: #a9b1d6;
+}
+
+/* ---------- Buttons ---------- */
+Button:focus {
+    text-style: bold reverse;
+}
+
+Button.-primary:focus {
+    border: tall #7aa2f7;
+}
+
+Button.-success:focus {
+    border: tall #9ece6a;
+}
+
+Button.-warning:focus {
+    border: tall #e0af68;
 }
 
 /* ---------- Header ---------- */

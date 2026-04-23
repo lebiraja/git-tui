@@ -25,15 +25,15 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 def _make_badge(info: RepoInfo) -> str:
-    """Build a Rich markup badge string with optional file count."""
+    """Build a Rich markup badge string with icon and optional file count."""
     count = info.modified_count
     if info.status == RepoStatus.CLEAN:
-        return "[bold white on #2d7d46] ✓ CLEAN [/]"
+        return "[bold white on #2d7d46] ✔ Clean [/]"
     elif info.status == RepoStatus.MODIFIED:
-        label = f" ✎ MODIFIED ({count}) " if count else " ✎ MODIFIED "
+        label = f" ● Modified ({count}) " if count else " ● Modified "
         return f"[bold #1a1b26 on #e0af68]{label}[/]"
     else:  # UNTRACKED
-        label = f" ? UNTRACKED ({count}) " if count else " ? UNTRACKED "
+        label = f" ○ Untracked ({count}) " if count else " ○ Untracked "
         return f"[bold white on #db4b4b]{label}[/]"
 
 
@@ -86,8 +86,18 @@ class RepoListItem(ListItem):
         line1 = f"[bold #c0caf5]{info.name}[/]  {badge}"
         # Line 2: branch  |  relative time  |  sparkline
         line2 = f"  [#bb9af7]⎇ {info.branch}[/]  [dim #565f89]⏱ {rel}[/]  {spark}"
+        # Line 3: truncated last commit message for quick context
+        commit_msg = info.last_commit_msg
+        if len(commit_msg) > 36:
+            commit_msg = commit_msg[:35] + "…"
+        line3 = f"  [dim #565f89]💬 {commit_msg}[/]" if commit_msg else "  [dim #3b4261]no commits[/]"
+        # Line 4: truncated repo path for disambiguation
+        path_str = str(info.path)
+        if len(path_str) > 38:
+            path_str = "…" + path_str[-37:]
+        line4 = f"  [dim #3b4261]{path_str}[/]"
 
-        yield Static(f"{line1}\n{line2}", markup=True)
+        yield Static(f"{line1}\n{line2}\n{line3}\n{line4}", markup=True)
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +152,23 @@ class RepoSidebar(Static):
         """Clear and re-populate the repo list."""
         list_view: ListView = self.query_one("#repo-list", ListView)
         list_view.clear()
+
+        if not repos:
+            # Friendly empty state
+            from textual.widgets import ListItem as _LI
+            list_view.append(_LI(Static(
+                "[dim italic #565f89]\n  📂  No repositories found\n"
+                "      Try a different root or\n"
+                "      press r to rescan\n[/]",
+                markup=True,
+            )))
+            return
+
         for info in repos:
             list_view.append(RepoListItem(info))
 
         # Auto-select first item
-        if repos:
-            list_view.index = 0
+        list_view.index = 0
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Forward the highlight event as a RepoSelected message."""

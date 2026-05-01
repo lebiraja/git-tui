@@ -28,6 +28,7 @@ try:
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
     from gitpulse.utils import __version__
+    from gitpulse import config as _config
 except ImportError:
     # Running directly: python main.py
     _THIS_DIR = Path(__file__).resolve().parent
@@ -38,6 +39,7 @@ except ImportError:
     from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
     from ui.tabs import MainPanel  # type: ignore[no-redef]
     from utils import __version__  # type: ignore[no-redef]
+    import config as _config  # type: ignore[no-redef]
 
 
 class GitPulseApp(App):
@@ -126,7 +128,7 @@ class GitPulseApp(App):
             sidebar.update_header(scanning=True)
         except Exception:
             pass
-        self.run_worker(self._scan_worker, thread=True, exclusive=True)
+        self.run_worker(self._scan_worker, thread=True, exclusive=True, group="scan")
 
     def _scan_worker(self) -> list[RepoInfo]:
         """Worker function: scan filesystem and collect RepoInfo objects.
@@ -247,6 +249,13 @@ def parse_args() -> argparse.Namespace:
         help="Number of commits to display per repo (default: 10)",
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to config.toml (default: ~/.config/gitpulse/config.toml)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"gitpulse {__version__}",
@@ -257,6 +266,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Entry point — called by both `python main.py` and the `gitpulse` command."""
     args = parse_args()
+
+    # Load config (custom path takes precedence)
+    if args.config:
+        _config.load(Path(args.config))
+
     root = Path(args.root).expanduser().resolve()
 
     if not root.is_dir():

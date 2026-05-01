@@ -136,17 +136,32 @@ class RepoSidebar(Static):
         )
         yield ListView(id="repo-list")
 
-    def update_header(self, scanning: bool, count: int = 0) -> None:
-        """Update the title bar to show scanning state or repo count."""
+    def update_header(
+        self,
+        scanning: bool,
+        count: int = 0,
+        live: bool | None = None,
+    ) -> None:
+        """Update the title bar to show scanning state or repo count.
+
+        *live* controls the watch indicator: True = green dot, False = dim dot,
+        None = unchanged from last render.
+        """
         title: Static = self.query_one("#sidebar-title", Static)
         if scanning:
             title.update("⚡ [bold #7aa2f7]GitPulse[/]  [dim #565f89]scanning…[/]")
+            return
+        count_str = (
+            f"[dim #565f89]{count} repo{'s' if count != 1 else ''}[/]"
+            if count else ""
+        )
+        if live is True:
+            live_str = "  [bold #9ece6a]●live[/]"
+        elif live is False:
+            live_str = "  [dim #565f89]○paused[/]"
         else:
-            count_str = (
-                f"[dim #565f89]{count} repo{'s' if count != 1 else ''}[/]"
-                if count else ""
-            )
-            title.update(f"⚡ [bold #7aa2f7]GitPulse[/]  {count_str}")
+            live_str = ""
+        title.update(f"⚡ [bold #7aa2f7]GitPulse[/]{live_str}  {count_str}")
 
     def populate(self, repos: list[RepoInfo]) -> None:
         """Clear and re-populate the repo list."""

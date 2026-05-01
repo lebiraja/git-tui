@@ -29,6 +29,8 @@ try:
     from gitpulse.ui.tabs import MainPanel
     from gitpulse.ui.fleet_status import FleetStatus
     from gitpulse.ui.digest_screen import DigestScreen
+    from gitpulse.ui.command_palette import CommandPaletteModal
+    from gitpulse.ui.bulk_results import BulkResultsScreen
     from gitpulse.utils import __version__, parse_since
     from gitpulse import config as _config
     from gitpulse import watcher as _watcher
@@ -43,6 +45,8 @@ except ImportError:
     from ui.tabs import MainPanel  # type: ignore[no-redef]
     from ui.fleet_status import FleetStatus  # type: ignore[no-redef]
     from ui.digest_screen import DigestScreen  # type: ignore[no-redef]
+    from ui.command_palette import CommandPaletteModal  # type: ignore[no-redef]
+    from ui.bulk_results import BulkResultsScreen  # type: ignore[no-redef]
     from utils import __version__, parse_since  # type: ignore[no-redef]
     import config as _config  # type: ignore[no-redef]
     import watcher as _watcher  # type: ignore[no-redef]
@@ -67,6 +71,7 @@ class GitPulseApp(App):
         Binding("r", "refresh", "Refresh", show=True),
         Binding("w", "toggle_watch", "Watch", show=True),
         Binding("d", "open_digest", "Digest", show=True),
+        Binding("colon", "open_palette", "Actions", show=True),
         Binding("slash", "search", "Search", show=True),
         Binding("escape", "clear_search", "Clear", show=False),
         Binding("tab", "focus_next", "Next", show=False),
@@ -135,6 +140,70 @@ class GitPulseApp(App):
             author_patterns=cfg.author.emails or [],
             default_window=cfg.digest.default_window,
         ))
+
+    def action_open_palette(self) -> None:
+        """Open the bulk-action command palette (bound to ':')."""
+        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+        sel_count = len(sidebar.selected_repos())
+
+        async def _after_palette(result: tuple | None) -> None:
+            if result is None:
+                return
+            action_key, scope = result
+            if scope == "selected":
+                target_repos = sidebar.selected_repos()
+            elif scope == "all":
+                target_repos = list(self._all_repos)
+            else:
+                target_repos = [self._selected_repo] if self._selected_repo else []
+
+            if not target_repos:
+                self.notify("No repos to act on", timeout=2)
+                return
+
+            # Push needs extra confirmation
+            if action_key == "push":
+                names = ", ".join(r.name for r in target_repos[:5])
+                extra = f" +{len(target_repos) - 5} more" if len(target_repos) > 5 else ""
+                self.notify(f"Pushing to: {names}{extra}", timeout=4)
+
+            self._dispatch_bulk(action_key, target_repos)
+
+        self.push_screen(CommandPaletteModal(selected_count=sel_count), _after_palette)
+
+    def _dispatch_bulk(self, action_key: str, repos: list) -> None:
+        """Fan out a bulk git operation over repos using a thread pool worker."""
+        from gitpulse.git_ops import git_fetch, git_pull, git_push, git_gc, git_remote_prune, git_clean_dry, get_repo_info
+        from gitpulse.parallel import run_parallel
+
+        _ops = {
+            "fetch":   lambda r: git_fetch(r.path),
+            "pull":    lambda r: git_pull(r.path),
+            "push":    lambda r: git_push(r.path),
+            "gc":      lambda r: git_gc(r.path),
+            "prune":   lambda r: git_remote_prune(r.path),
+            "clean":   lambda r: git_clean_dry(r.path),
+            "refresh": lambda r: get_repo_info(r.path),
+        }
+        op = _ops.get(action_key)
+        if op is None:
+            self.notify(f"Unknown action: {action_key}", severity="error", timeout=3)
+            return
+
+        cfg = _config.get()
+        results_screen = BulkResultsScreen(action=action_key, total=len(repos))
+        self.push_screen(results_screen)
+
+        def _worker() -> None:
+            def _progress(completed, total, repo, result):
+                self.call_from_thread(results_screen.append_row, repo, result)
+
+            run_parallel(op, repos, max_workers=cfg.bulk.max_workers, on_progress=_progress)
+            # After bulk refresh, trigger a rescan to update sidebar
+            if action_key in ("pull", "refresh"):
+                self.call_from_thread(self._start_scan)
+
+        self.run_worker(_worker, thread=True, group="bulk", exclusive=False)
 
     def action_toggle_watch(self) -> None:
         """Pause / resume watch mode (bound to 'w')."""
@@ -318,6 +387,12 @@ class GitPulseApp(App):
     def on_repo_sidebar_search_changed(self, message: RepoSidebar.SearchChanged) -> None:
         """User typed in the search bar."""
         self._apply_filter(message.query)
+
+    def on_repo_sidebar_selection_changed(self, message: RepoSidebar.SelectionChanged) -> None:
+        """Update the header when the multi-select set changes."""
+        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+        live = self._watch_enabled and not self._watch_paused
+        sidebar.update_header(scanning=False, count=len(self._all_repos), live=live)
 
     def on_fleet_status_filter_requested(self, message: FleetStatus.FilterRequested) -> None:
         """User clicked a fleet chip — filter sidebar to matching repos."""

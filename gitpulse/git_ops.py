@@ -775,6 +775,36 @@ def git_push(path: Path) -> str:
         return f"Error pushing: {exc}"
 
 
+def git_gc(path: Path) -> str:
+    """Run git gc --auto to prune loose objects."""
+    repo = _open_repo(path)
+    try:
+        repo.git.gc("--auto")
+        return "gc --auto completed ✓"
+    except Exception as exc:
+        return f"Error running gc: {exc}"
+
+
+def git_remote_prune(path: Path) -> str:
+    """Run git remote prune origin to remove stale remote-tracking refs."""
+    repo = _open_repo(path)
+    try:
+        result = repo.git.remote("prune", "origin")
+        return result.strip() if result.strip() else "remote prune origin completed ✓"
+    except Exception as exc:
+        return f"Error pruning: {exc}"
+
+
+def git_clean_dry(path: Path) -> str:
+    """Run git clean -nd (dry run) and return untracked file list."""
+    repo = _open_repo(path)
+    try:
+        result = repo.git.clean("-nd")
+        return result.strip() if result.strip() else "Nothing to clean ✓"
+    except Exception as exc:
+        return f"Error running clean: {exc}"
+
+
 # ===================================================================
 # Stash operations
 # ===================================================================

@@ -9,6 +9,7 @@ branches. Uses GitPython for interfacing with local git repositories.
 from __future__ import annotations
 
 import enum
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -70,6 +71,17 @@ class CommitInfo:
     files_changed: int = 0
     insertions: int = 0
     deletions: int = 0
+
+
+@dataclass
+class AuthorCommit:
+    """A single commit attributed to a specific author, used by digest mode."""
+    short_hash: str
+    ts: float
+    message: str
+    insertions: int = 0
+    deletions: int = 0
+    files_changed: int = 0
 
 
 @dataclass
@@ -844,3 +856,84 @@ def get_tracked_files(path: Path) -> list[str]:
         return sorted(p for p in ls_output.splitlines() if p.strip())
     except Exception:
         return []
+
+
+# ===================================================================
+# Author / Digest operations
+# ===================================================================
+
+def get_author_email(path: Path) -> str:
+    """Return the configured git user.email for this repo, or empty string."""
+    repo = _open_repo(path)
+    try:
+        return repo.git.config("user.email").strip()
+    except Exception:
+        return ""
+
+
+def get_author_commits(
+    path: Path,
+    since_ts: float,
+    author_pattern: str,
+) -> list[AuthorCommit]:
+    """Return commits by *author_pattern* in *path* since *since_ts*.
+
+    Uses ``--all`` so commits on any branch are credited. Parses shortstat
+    blocks to extract insertions/deletions without iterating commit objects.
+    """
+    repo = _open_repo(path)
+    commits: list[AuthorCommit] = []
+    try:
+        # Request log with NUL-separated records: hash\x1fts\x1fsubject
+        # then a blank line and the shortstat
+        raw = repo.git.log(
+            "--all",
+            "--no-merges",
+            f"--since=@{int(since_ts)}",
+            f"--author={author_pattern}",
+            "--pretty=format:\x1e%H\x1f%ct\x1f%s",
+            "--shortstat",
+        )
+        if not raw.strip():
+            return []
+
+        # Split on the record separator \x1e (prepended to each commit header)
+        records = [r for r in raw.split("\x1e") if r.strip()]
+        for record in records:
+            lines = record.strip().splitlines()
+            if not lines:
+                continue
+            header_line = lines[0]
+            parts = header_line.split("\x1f", 2)
+            if len(parts) < 3:
+                continue
+            full_hash, ts_str, subject = parts[0].strip(), parts[1], parts[2]
+            try:
+                ts = float(ts_str)
+            except ValueError:
+                continue
+
+            insertions = 0
+            deletions = 0
+            files_changed = 0
+            # shortstat line looks like: "3 files changed, 42 insertions(+), 5 deletions(-)"
+            stat_lines = [l for l in lines[1:] if "changed" in l or "insertion" in l or "deletion" in l]
+            for stat in stat_lines:
+                m_files = re.search(r"(\d+) file", stat)
+                m_ins   = re.search(r"(\d+) insertion", stat)
+                m_del   = re.search(r"(\d+) deletion", stat)
+                if m_files: files_changed = int(m_files.group(1))
+                if m_ins:   insertions    = int(m_ins.group(1))
+                if m_del:   deletions     = int(m_del.group(1))
+
+            commits.append(AuthorCommit(
+                short_hash=full_hash[:7],
+                ts=ts,
+                message=subject.strip(),
+                insertions=insertions,
+                deletions=deletions,
+                files_changed=files_changed,
+            ))
+    except Exception:
+        pass
+    return commits

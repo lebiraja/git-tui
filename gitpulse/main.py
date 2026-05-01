@@ -28,7 +28,8 @@ try:
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
     from gitpulse.ui.fleet_status import FleetStatus
-    from gitpulse.utils import __version__
+    from gitpulse.ui.digest_screen import DigestScreen
+    from gitpulse.utils import __version__, parse_since
     from gitpulse import config as _config
     from gitpulse import watcher as _watcher
 except ImportError:
@@ -41,7 +42,8 @@ except ImportError:
     from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
     from ui.tabs import MainPanel  # type: ignore[no-redef]
     from ui.fleet_status import FleetStatus  # type: ignore[no-redef]
-    from utils import __version__  # type: ignore[no-redef]
+    from ui.digest_screen import DigestScreen  # type: ignore[no-redef]
+    from utils import __version__, parse_since  # type: ignore[no-redef]
     import config as _config  # type: ignore[no-redef]
     import watcher as _watcher  # type: ignore[no-redef]
 
@@ -64,6 +66,7 @@ class GitPulseApp(App):
         Binding("q", "quit", "Quit", show=True),
         Binding("r", "refresh", "Refresh", show=True),
         Binding("w", "toggle_watch", "Watch", show=True),
+        Binding("d", "open_digest", "Digest", show=True),
         Binding("slash", "search", "Search", show=True),
         Binding("escape", "clear_search", "Clear", show=False),
         Binding("tab", "focus_next", "Next", show=False),
@@ -123,6 +126,15 @@ class GitPulseApp(App):
             return
         self._start_scan()
         self.notify("Scanning repositories… ⚡", timeout=2)
+
+    def action_open_digest(self) -> None:
+        """Open the activity digest modal (bound to 'd')."""
+        cfg = _config.get()
+        self.push_screen(DigestScreen(
+            repos=self._all_repos,
+            author_patterns=cfg.author.emails or [],
+            default_window=cfg.digest.default_window,
+        ))
 
     def action_toggle_watch(self) -> None:
         """Pause / resume watch mode (bound to 'w')."""
@@ -375,6 +387,27 @@ def parse_args() -> argparse.Namespace:
         help="Disable live watch mode (default: enabled)",
     )
     parser.add_argument(
+        "--digest",
+        action="store_true",
+        default=False,
+        help="Print activity digest as markdown and exit (no TUI)",
+    )
+    parser.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        metavar="SPEC",
+        help="Time window for --digest: 1d, 7d, 30d, yesterday, YYYY-MM-DD (default: 1d)",
+    )
+    parser.add_argument(
+        "--author",
+        action="append",
+        dest="authors",
+        metavar="EMAIL",
+        default=None,
+        help="Author email filter for --digest (repeatable; default: git config user.email)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"gitpulse {__version__}",
@@ -397,6 +430,28 @@ def main() -> None:
         sys.exit(1)
 
     cfg = _config.get()
+
+    if args.digest:
+        # CLI digest mode — no TUI
+        from gitpulse.scanner import scan_repos as _scan
+        from gitpulse.git_ops import get_repo_info as _gri
+        from gitpulse.digest import build_digest as _bd, render_markdown as _rm
+        from gitpulse.utils import parse_since as _ps
+
+        since_spec = args.since or cfg.digest.default_window
+        try:
+            since_ts = _ps(since_spec)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        author_patterns = args.authors or cfg.author.emails or []
+        paths = _scan(root)
+        repos = [_gri(p) for p in paths]
+        digest = _bd(repos, since_ts, author_patterns, max_workers=cfg.bulk.max_workers)
+        print(_rm(digest))
+        return
+
     watch_enabled = cfg.watch.enabled and not args.no_watch
     app = GitPulseApp(root_dir=root, commits=args.commits, watch=watch_enabled)
     app.run()

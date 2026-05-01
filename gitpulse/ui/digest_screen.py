@@ -178,8 +178,8 @@ class DigestScreen(ModalScreen):
             lines.append(
                 f"\n[bold #bb9af7]📁 {rd.repo.name}[/]  "
                 f"[dim]{len(rd.commits)} commit{'s' if len(rd.commits) != 1 else ''}  "
-                f"[#9ece6a]+{rd.insertions}[/dim #9ece6a] "
-                f"[#f7768e]-{rd.deletions}[/dim #f7768e][dim][/]"
+                f"[#9ece6a]+{rd.insertions}[/]"
+                f" [#f7768e]-{rd.deletions}[/][/dim]"
             )
             for c in rd.commits:
                 rel = relative_time(c.ts)

@@ -92,6 +92,21 @@ class BranchInfo:
 
 
 @dataclass
+class BranchDetail:
+    """Rich branch information used by stale-branch analysis."""
+    repo_path: Path
+    repo_name: str
+    name: str
+    last_commit_ts: float
+    last_commit_msg: str
+    is_current: bool
+    has_upstream: bool
+    is_merged_into_default: bool
+    is_wip: bool         # subject matches ^(wip|fixup!|squash!|tmp)\b
+    age_days: int
+
+
+@dataclass
 class StashEntry:
     """A single stash entry."""
     index: int
@@ -891,6 +906,82 @@ def get_tracked_files(path: Path) -> list[str]:
 # ===================================================================
 # Author / Digest operations
 # ===================================================================
+
+def default_branch_for(repo, candidates: list[str] | None = None) -> str | None:
+    """Return the first candidate branch that exists locally, else None."""
+    _candidates = candidates or ["main", "master", "develop", "trunk"]
+    local_names = {b.name for b in repo.branches}
+    for name in _candidates:
+        if name in local_names:
+            return name
+    return None
+
+
+def get_branch_details(
+    path: Path,
+    default_branches: list[str] | None = None,
+) -> list[BranchDetail]:
+    """Return rich details for every local branch in the repo."""
+    import time as _time
+    repo = _open_repo(path)
+    details: list[BranchDetail] = []
+
+    try:
+        current = repo.active_branch.name if not repo.head.is_detached else None
+    except Exception:
+        current = None
+
+    default = default_branch_for(repo, default_branches)
+
+    # Collect merged branches (names only)
+    merged: set[str] = set()
+    if default:
+        try:
+            merged_out = repo.git.branch("--merged", default)
+            for line in merged_out.splitlines():
+                merged.add(line.strip().lstrip("* "))
+        except Exception:
+            pass
+
+    _wip_re = re.compile(r"^(wip|fixup!|squash!|tmp)\b", re.IGNORECASE)
+    now = _time.time()
+
+    try:
+        raw = repo.git.for_each_ref(
+            "refs/heads/",
+            format="%(refname:short)%00%(committerdate:unix)%00%(contents:subject)%00%(upstream:short)%00%(HEAD)",
+        )
+    except Exception:
+        return details
+
+    for line in raw.strip().splitlines():
+        parts = line.split("\x00")
+        if len(parts) < 5:
+            continue
+        bname, ts_str, subject, upstream, head_marker = parts[0], parts[1], parts[2], parts[3], parts[4]
+
+        try:
+            ts = float(ts_str)
+        except ValueError:
+            ts = 0.0
+
+        age_days = int((now - ts) / 86400) if ts else 0
+
+        details.append(BranchDetail(
+            repo_path=path,
+            repo_name=path.name,
+            name=bname,
+            last_commit_ts=ts,
+            last_commit_msg=subject.strip()[:80],
+            is_current=(head_marker.strip() == "*" or bname == current),
+            has_upstream=bool(upstream.strip()),
+            is_merged_into_default=(bname in merged),
+            is_wip=bool(_wip_re.match(subject.strip())),
+            age_days=age_days,
+        ))
+
+    return details
+
 
 def get_author_email(path: Path) -> str:
     """Return the configured git user.email for this repo, or empty string."""

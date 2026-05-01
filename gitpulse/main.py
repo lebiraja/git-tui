@@ -31,6 +31,7 @@ try:
     from gitpulse.ui.digest_screen import DigestScreen
     from gitpulse.ui.command_palette import CommandPaletteModal
     from gitpulse.ui.bulk_results import BulkResultsScreen
+    from gitpulse.ui.stale_screen import StaleScreen
     from gitpulse.utils import __version__, parse_since
     from gitpulse import config as _config
     from gitpulse import watcher as _watcher
@@ -47,6 +48,7 @@ except ImportError:
     from ui.digest_screen import DigestScreen  # type: ignore[no-redef]
     from ui.command_palette import CommandPaletteModal  # type: ignore[no-redef]
     from ui.bulk_results import BulkResultsScreen  # type: ignore[no-redef]
+    from ui.stale_screen import StaleScreen  # type: ignore[no-redef]
     from utils import __version__, parse_since  # type: ignore[no-redef]
     import config as _config  # type: ignore[no-redef]
     import watcher as _watcher  # type: ignore[no-redef]
@@ -72,6 +74,7 @@ class GitPulseApp(App):
         Binding("w", "toggle_watch", "Watch", show=True),
         Binding("d", "open_digest", "Digest", show=True),
         Binding("colon", "open_palette", "Actions", show=True),
+        Binding("b", "open_stale", "Stale", show=True),
         Binding("slash", "search", "Search", show=True),
         Binding("escape", "clear_search", "Clear", show=False),
         Binding("tab", "focus_next", "Next", show=False),
@@ -139,6 +142,16 @@ class GitPulseApp(App):
             repos=self._all_repos,
             author_patterns=cfg.author.emails or [],
             default_window=cfg.digest.default_window,
+        ))
+
+    def action_open_stale(self) -> None:
+        """Open stale-branch cleanup modal (bound to 'b')."""
+        cfg = _config.get()
+        self.push_screen(StaleScreen(
+            repo_paths=[r.path for r in self._all_repos],
+            stale_weeks=cfg.stale.weeks,
+            default_branches=cfg.stale.default_branches,
+            max_workers=cfg.bulk.max_workers,
         ))
 
     def action_open_palette(self) -> None:

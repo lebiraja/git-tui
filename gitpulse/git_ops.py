@@ -46,6 +46,10 @@ class RepoInfo:
     total_commits: int = 0              # Total commit count on current branch
     contributor_count: int = 0          # Unique author count
     commit_activity: list[int] = field(default_factory=list)  # Commits per week, 7 weeks oldest→newest
+    ahead: int = 0                       # Commits ahead of upstream
+    behind: int = 0                      # Commits behind upstream
+    stash_count: int = 0                 # Number of stash entries
+    has_stale_branches: bool = False     # True if any branch is older than stale threshold
 
 
 @dataclass
@@ -184,6 +188,48 @@ def get_repo_info(path: Path) -> RepoInfo:
         except Exception:
             pass
 
+        # Ahead/behind relative to upstream (skip for detached HEAD)
+        ahead = 0
+        behind = 0
+        try:
+            if branch != "(detached)":
+                _br = repo.active_branch
+                tracking = _br.tracking_branch()
+                if tracking:
+                    ahead = len(list(repo.iter_commits(f"{tracking.name}..{_br.name}")))
+                    behind = len(list(repo.iter_commits(f"{_br.name}..{tracking.name}")))
+        except Exception:
+            pass
+
+        # Stash count
+        stash_count = 0
+        try:
+            sl = repo.git.stash("list")
+            stash_count = len(sl.strip().splitlines()) if sl.strip() else 0
+        except Exception:
+            pass
+
+        # Stale-branch quick check (any local branch older than 8 weeks, not current)
+        has_stale = False
+        try:
+            _stale_cutoff = time.time() - (8 * 7 * 86400)
+            ref_out = repo.git.for_each_ref(
+                "refs/heads/",
+                format="%(refname:short) %(committerdate:unix)",
+            )
+            for _line in ref_out.strip().splitlines():
+                _parts = _line.rsplit(" ", 1)
+                if len(_parts) == 2:
+                    _bname, _ts_str = _parts
+                    try:
+                        if float(_ts_str) < _stale_cutoff and _bname != branch:
+                            has_stale = True
+                            break
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
     except (InvalidGitRepositoryError, Exception):
         branch = "unknown"
         status = RepoStatus.CLEAN
@@ -193,6 +239,10 @@ def get_repo_info(path: Path) -> RepoInfo:
         total = 0
         contributor_count = 0
         activity = []
+        ahead = 0
+        behind = 0
+        stash_count = 0
+        has_stale = False
 
     return RepoInfo(
         name=path.name,
@@ -205,6 +255,10 @@ def get_repo_info(path: Path) -> RepoInfo:
         total_commits=total,
         contributor_count=contributor_count,
         commit_activity=activity,
+        ahead=ahead,
+        behind=behind,
+        stash_count=stash_count,
+        has_stale_branches=has_stale,
     )
 
 

@@ -17,7 +17,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Header, Footer, Input
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.worker import Worker, WorkerState
 
 # Support both installed-package imports (gitpulse.scanner) and
@@ -27,6 +27,7 @@ try:
     from gitpulse.git_ops import get_repo_info, switch_branch, RepoInfo
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
+    from gitpulse.ui.fleet_status import FleetStatus
     from gitpulse.utils import __version__
     from gitpulse import config as _config
 except ImportError:
@@ -38,6 +39,7 @@ except ImportError:
     from git_ops import get_repo_info, switch_branch, RepoInfo  # type: ignore[no-redef]
     from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
     from ui.tabs import MainPanel  # type: ignore[no-redef]
+    from ui.fleet_status import FleetStatus  # type: ignore[no-redef]
     from utils import __version__  # type: ignore[no-redef]
     import config as _config  # type: ignore[no-redef]
 
@@ -81,7 +83,9 @@ class GitPulseApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="app-grid"):
-            yield RepoSidebar(id="sidebar-container")
+            with Vertical(id="sidebar-column"):
+                yield FleetStatus(id="fleet-status")
+                yield RepoSidebar(id="sidebar-container")
             yield MainPanel(id="main-panel", commits=self.commits)
         yield Footer()
 
@@ -153,6 +157,9 @@ class GitPulseApp(App):
             sidebar.update_header(scanning=False, count=len(infos))
             sidebar.populate(self.repos)
 
+            fleet: FleetStatus = self.query_one("#fleet-status", FleetStatus)
+            fleet.update_counters(infos)
+
             if self.repos:
                 self._select_repo(self.repos[0])
 
@@ -182,6 +189,27 @@ class GitPulseApp(App):
 
         sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
         sidebar.populate(self.repos)
+        if self.repos:
+            self._select_repo(self.repos[0])
+
+    def _apply_fleet_filter(self, category: str) -> None:
+        """Filter sidebar to repos matching a fleet-status category."""
+        from gitpulse.git_ops import RepoStatus  # avoid circular at module level
+        _predicates = {
+            "dirty":   lambda r: r.status != RepoStatus.CLEAN,
+            "behind":  lambda r: r.behind > 0,
+            "ahead":   lambda r: r.ahead > 0,
+            "stashes": lambda r: r.stash_count > 0,
+            "stale":   lambda r: r.has_stale_branches,
+        }
+        pred = _predicates.get(category)
+        if pred is None:
+            self.repos = list(self._all_repos)
+        else:
+            self.repos = [r for r in self._all_repos if pred(r)]
+
+        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+        sidebar.populate(self.repos)
 
         if self.repos:
             self._select_repo(self.repos[0])
@@ -197,6 +225,10 @@ class GitPulseApp(App):
     def on_repo_sidebar_search_changed(self, message: RepoSidebar.SearchChanged) -> None:
         """User typed in the search bar."""
         self._apply_filter(message.query)
+
+    def on_fleet_status_filter_requested(self, message: FleetStatus.FilterRequested) -> None:
+        """User clicked a fleet chip — filter sidebar to matching repos."""
+        self._apply_fleet_filter(message.category)
 
     def on_main_panel_branch_switch_requested(
         self, message: MainPanel.BranchSwitchRequested

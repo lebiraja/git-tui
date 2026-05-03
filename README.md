@@ -14,15 +14,26 @@ Built with **Python**, **Textual**, **Rich**, and **GitPython**.
 
 ![Commits tab](ss/commits.png)
 
-## Install (one command)
+## Installation
+
+The easiest way to install GitPulse is via PyPI using `pip` or `pipx`:
 
 ```bash
-git clone https://github.com/yourname/git-tui.git
+pip install gitpulse-tui
+```
+*(We recommend using `pipx install gitpulse-tui` to install it in an isolated environment)*
+
+### Install from source
+
+If you prefer to install from source or want to contribute to the project:
+
+```bash
+git clone https://github.com/lebiraja/git-tui.git
 cd git-tui
 ./install.sh
 ```
 
-That's it. The installer:
+The installer:
 - Checks your Python version (3.10+ required)
 - Creates a virtual environment automatically
 - Installs all dependencies

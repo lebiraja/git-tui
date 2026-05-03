@@ -3,8 +3,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gitpulse"
-version = "1.0.0"
+name = "gitpulse-tui"
+version = "1.2.1"
 description = "Git Repo Dashboard TUI — live status, commits, diffs, and branches in your terminal"
 requires-python = ">=3.10"
 dependencies = [
@@ -19,3 +19,6 @@ gitpulse = "gitpulse.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gitpulse*"]
+
+[tool.setuptools.package-data]
+gitpulse = ["ui/*.tcss"]

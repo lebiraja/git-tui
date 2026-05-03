@@ -15,12 +15,18 @@ Screen {
     height: 1fr;
 }
 
-#sidebar-container {
+#sidebar-column {
     width: 46;
     min-width: 32;
     max-width: 58;
     background: #16161e;
     border-right: vkey #3b4261;
+}
+
+#sidebar-container {
+    width: 100%;
+    height: 1fr;
+    background: #16161e;
 }
 
 #main-panel {

@@ -9,6 +9,7 @@ branches. Uses GitPython for interfacing with local git repositories.
 from __future__ import annotations
 
 import enum
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -46,6 +47,10 @@ class RepoInfo:
     total_commits: int = 0              # Total commit count on current branch
     contributor_count: int = 0          # Unique author count
     commit_activity: list[int] = field(default_factory=list)  # Commits per week, 7 weeks oldest→newest
+    ahead: int = 0                       # Commits ahead of upstream
+    behind: int = 0                      # Commits behind upstream
+    stash_count: int = 0                 # Number of stash entries
+    has_stale_branches: bool = False     # True if any branch is older than stale threshold
 
 
 @dataclass
@@ -69,10 +74,36 @@ class CommitInfo:
 
 
 @dataclass
+class AuthorCommit:
+    """A single commit attributed to a specific author, used by digest mode."""
+    short_hash: str
+    ts: float
+    message: str
+    insertions: int = 0
+    deletions: int = 0
+    files_changed: int = 0
+
+
+@dataclass
 class BranchInfo:
     """Information about a local branch."""
     name: str
     is_current: bool
+
+
+@dataclass
+class BranchDetail:
+    """Rich branch information used by stale-branch analysis."""
+    repo_path: Path
+    repo_name: str
+    name: str
+    last_commit_ts: float
+    last_commit_msg: str
+    is_current: bool
+    has_upstream: bool
+    is_merged_into_default: bool
+    is_wip: bool         # subject matches ^(wip|fixup!|squash!|tmp)\b
+    age_days: int
 
 
 @dataclass
@@ -184,6 +215,48 @@ def get_repo_info(path: Path) -> RepoInfo:
         except Exception:
             pass
 
+        # Ahead/behind relative to upstream (skip for detached HEAD)
+        ahead = 0
+        behind = 0
+        try:
+            if branch != "(detached)":
+                _br = repo.active_branch
+                tracking = _br.tracking_branch()
+                if tracking:
+                    ahead = len(list(repo.iter_commits(f"{tracking.name}..{_br.name}")))
+                    behind = len(list(repo.iter_commits(f"{_br.name}..{tracking.name}")))
+        except Exception:
+            pass
+
+        # Stash count
+        stash_count = 0
+        try:
+            sl = repo.git.stash("list")
+            stash_count = len(sl.strip().splitlines()) if sl.strip() else 0
+        except Exception:
+            pass
+
+        # Stale-branch quick check (any local branch older than 8 weeks, not current)
+        has_stale = False
+        try:
+            _stale_cutoff = time.time() - (8 * 7 * 86400)
+            ref_out = repo.git.for_each_ref(
+                "refs/heads/",
+                format="%(refname:short) %(committerdate:unix)",
+            )
+            for _line in ref_out.strip().splitlines():
+                _parts = _line.rsplit(" ", 1)
+                if len(_parts) == 2:
+                    _bname, _ts_str = _parts
+                    try:
+                        if float(_ts_str) < _stale_cutoff and _bname != branch:
+                            has_stale = True
+                            break
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
     except (InvalidGitRepositoryError, Exception):
         branch = "unknown"
         status = RepoStatus.CLEAN
@@ -193,6 +266,10 @@ def get_repo_info(path: Path) -> RepoInfo:
         total = 0
         contributor_count = 0
         activity = []
+        ahead = 0
+        behind = 0
+        stash_count = 0
+        has_stale = False
 
     return RepoInfo(
         name=path.name,
@@ -205,6 +282,10 @@ def get_repo_info(path: Path) -> RepoInfo:
         total_commits=total,
         contributor_count=contributor_count,
         commit_activity=activity,
+        ahead=ahead,
+        behind=behind,
+        stash_count=stash_count,
+        has_stale_branches=has_stale,
     )
 
 
@@ -709,6 +790,36 @@ def git_push(path: Path) -> str:
         return f"Error pushing: {exc}"
 
 
+def git_gc(path: Path) -> str:
+    """Run git gc --auto to prune loose objects."""
+    repo = _open_repo(path)
+    try:
+        repo.git.gc("--auto")
+        return "gc --auto completed ✓"
+    except Exception as exc:
+        return f"Error running gc: {exc}"
+
+
+def git_remote_prune(path: Path) -> str:
+    """Run git remote prune origin to remove stale remote-tracking refs."""
+    repo = _open_repo(path)
+    try:
+        result = repo.git.remote("prune", "origin")
+        return result.strip() if result.strip() else "remote prune origin completed ✓"
+    except Exception as exc:
+        return f"Error pruning: {exc}"
+
+
+def git_clean_dry(path: Path) -> str:
+    """Run git clean -nd (dry run) and return untracked file list."""
+    repo = _open_repo(path)
+    try:
+        result = repo.git.clean("-nd")
+        return result.strip() if result.strip() else "Nothing to clean ✓"
+    except Exception as exc:
+        return f"Error running clean: {exc}"
+
+
 # ===================================================================
 # Stash operations
 # ===================================================================
@@ -790,3 +901,160 @@ def get_tracked_files(path: Path) -> list[str]:
         return sorted(p for p in ls_output.splitlines() if p.strip())
     except Exception:
         return []
+
+
+# ===================================================================
+# Author / Digest operations
+# ===================================================================
+
+def default_branch_for(repo, candidates: list[str] | None = None) -> str | None:
+    """Return the first candidate branch that exists locally, else None."""
+    _candidates = candidates or ["main", "master", "develop", "trunk"]
+    local_names = {b.name for b in repo.branches}
+    for name in _candidates:
+        if name in local_names:
+            return name
+    return None
+
+
+def get_branch_details(
+    path: Path,
+    default_branches: list[str] | None = None,
+) -> list[BranchDetail]:
+    """Return rich details for every local branch in the repo."""
+    import time as _time
+    repo = _open_repo(path)
+    details: list[BranchDetail] = []
+
+    try:
+        current = repo.active_branch.name if not repo.head.is_detached else None
+    except Exception:
+        current = None
+
+    default = default_branch_for(repo, default_branches)
+
+    # Collect merged branches (names only)
+    merged: set[str] = set()
+    if default:
+        try:
+            merged_out = repo.git.branch("--merged", default)
+            for line in merged_out.splitlines():
+                merged.add(line.strip().lstrip("* "))
+        except Exception:
+            pass
+
+    _wip_re = re.compile(r"^(wip|fixup!|squash!|tmp)\b", re.IGNORECASE)
+    now = _time.time()
+
+    try:
+        raw = repo.git.for_each_ref(
+            "refs/heads/",
+            format="%(refname:short)%00%(committerdate:unix)%00%(contents:subject)%00%(upstream:short)%00%(HEAD)",
+        )
+    except Exception:
+        return details
+
+    for line in raw.strip().splitlines():
+        parts = line.split("\x00")
+        if len(parts) < 5:
+            continue
+        bname, ts_str, subject, upstream, head_marker = parts[0], parts[1], parts[2], parts[3], parts[4]
+
+        try:
+            ts = float(ts_str)
+        except ValueError:
+            ts = 0.0
+
+        age_days = int((now - ts) / 86400) if ts else 0
+
+        details.append(BranchDetail(
+            repo_path=path,
+            repo_name=path.name,
+            name=bname,
+            last_commit_ts=ts,
+            last_commit_msg=subject.strip()[:80],
+            is_current=(head_marker.strip() == "*" or bname == current),
+            has_upstream=bool(upstream.strip()),
+            is_merged_into_default=(bname in merged),
+            is_wip=bool(_wip_re.match(subject.strip())),
+            age_days=age_days,
+        ))
+
+    return details
+
+
+def get_author_email(path: Path) -> str:
+    """Return the configured git user.email for this repo, or empty string."""
+    repo = _open_repo(path)
+    try:
+        return repo.git.config("user.email").strip()
+    except Exception:
+        return ""
+
+
+def get_author_commits(
+    path: Path,
+    since_ts: float,
+    author_pattern: str,
+) -> list[AuthorCommit]:
+    """Return commits by *author_pattern* in *path* since *since_ts*.
+
+    Uses ``--all`` so commits on any branch are credited. Parses shortstat
+    blocks to extract insertions/deletions without iterating commit objects.
+    """
+    repo = _open_repo(path)
+    commits: list[AuthorCommit] = []
+    try:
+        # Request log with NUL-separated records: hash\x1fts\x1fsubject
+        # then a blank line and the shortstat
+        raw = repo.git.log(
+            "--all",
+            "--no-merges",
+            f"--since=@{int(since_ts)}",
+            f"--author={author_pattern}",
+            "--pretty=format:\x1e%H\x1f%ct\x1f%s",
+            "--shortstat",
+        )
+        if not raw.strip():
+            return []
+
+        # Split on the record separator \x1e (prepended to each commit header)
+        records = [r for r in raw.split("\x1e") if r.strip()]
+        for record in records:
+            lines = record.strip().splitlines()
+            if not lines:
+                continue
+            header_line = lines[0]
+            parts = header_line.split("\x1f", 2)
+            if len(parts) < 3:
+                continue
+            full_hash, ts_str, subject = parts[0].strip(), parts[1], parts[2]
+            try:
+                ts = float(ts_str)
+            except ValueError:
+                continue
+
+            insertions = 0
+            deletions = 0
+            files_changed = 0
+            # shortstat line looks like: "3 files changed, 42 insertions(+), 5 deletions(-)"
+            stat_lines = [l for l in lines[1:] if "changed" in l or "insertion" in l or "deletion" in l]
+            for stat in stat_lines:
+                m_files = re.search(r"(\d+) file", stat)
+                m_ins   = re.search(r"(\d+) insertion", stat)
+                m_del   = re.search(r"(\d+) deletion", stat)
+                if m_files: files_changed = int(m_files.group(1))
+                if m_ins:   insertions    = int(m_ins.group(1))
+                if m_del:   deletions     = int(m_del.group(1))
+
+            commits.append(AuthorCommit(
+                short_hash=full_hash[:7],
+                ts=ts,
+                message=subject.strip(),
+                insertions=insertions,
+                deletions=deletions,
+                files_changed=files_changed,
+            ))
+    except Exception:
+        pass
+    return commits

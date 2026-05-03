@@ -3,10 +3,13 @@ sidebar.py — Repo list sidebar widget for GitPulse.
 
 Displays all discovered repositories in a scrollable ListView with
 color-coded status badges, branch names, relative time, and file counts.
-Includes a search/filter input at the top.
+Includes a search/filter input at the top and multi-select support for
+bulk operations.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.message import Message
@@ -72,9 +75,10 @@ class RepoListItem(ListItem):
     }
     """
 
-    def __init__(self, repo_info: RepoInfo, **kwargs) -> None:
+    def __init__(self, repo_info: RepoInfo, selected: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         self.repo_info = repo_info
+        self._selected = selected
 
     def compose(self) -> ComposeResult:
         info = self.repo_info
@@ -82,20 +86,26 @@ class RepoListItem(ListItem):
         rel = relative_time(info.last_commit_ts)
         spark = _sparkline(info.commit_activity)
 
-        # Line 1: repo name  +  badge
-        line1 = f"[bold #c0caf5]{info.name}[/]  {badge}"
+        # Selection checkbox prefix
+        if self._selected:
+            checkbox = "[bold #9ece6a][✓][/] "
+        else:
+            checkbox = "[dim #3b4261][ ][/] "
+
+        # Line 1: checkbox + repo name + badge
+        line1 = f"{checkbox}[bold #c0caf5]{info.name}[/]  {badge}"
         # Line 2: branch  |  relative time  |  sparkline
-        line2 = f"  [#bb9af7]⎇ {info.branch}[/]  [dim #565f89]⏱ {rel}[/]  {spark}"
+        line2 = f"   [#bb9af7]⎇ {info.branch}[/]  [dim #565f89]⏱ {rel}[/]  {spark}"
         # Line 3: truncated last commit message for quick context
         commit_msg = info.last_commit_msg
         if len(commit_msg) > 36:
             commit_msg = commit_msg[:35] + "…"
-        line3 = f"  [dim #565f89]💬 {commit_msg}[/]" if commit_msg else "  [dim #3b4261]no commits[/]"
+        line3 = f"   [dim #565f89]💬 {commit_msg}[/]" if commit_msg else "   [dim #3b4261]no commits[/]"
         # Line 4: truncated repo path for disambiguation
         path_str = str(info.path)
         if len(path_str) > 38:
             path_str = "…" + path_str[-37:]
-        line4 = f"  [dim #3b4261]{path_str}[/]"
+        line4 = f"   [dim #3b4261]{path_str}[/]"
 
         yield Static(f"{line1}\n{line2}\n{line3}\n{line4}", markup=True)
 
@@ -109,7 +119,8 @@ class RepoSidebar(Static):
     Left sidebar panel: title + search input + scrollable list of repos.
 
     Posts a `RepoSidebar.RepoSelected` message when the user highlights
-    a different repo, and `RepoSidebar.SearchChanged` when the filter changes.
+    a different repo, `RepoSidebar.SearchChanged` when the filter changes,
+    and `RepoSidebar.SelectionChanged` when the multi-select set changes.
     """
 
     class RepoSelected(Message):
@@ -124,6 +135,64 @@ class RepoSidebar(Static):
             super().__init__()
             self.query = query
 
+    class SelectionChanged(Message):
+        """Fired when the multi-select set changes."""
+        def __init__(self, count: int, paths: list[Path]) -> None:
+            super().__init__()
+            self.count = count
+            self.paths = paths
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._selected: set[Path] = set()
+        self._current_repos: list[RepoInfo] = []
+
+    # ── Multi-select API ────────────────────────────────────────────────
+
+    def is_selected(self, path: Path) -> bool:
+        return path in self._selected
+
+    def toggle(self, path: Path) -> None:
+        if path in self._selected:
+            self._selected.discard(path)
+        else:
+            self._selected.add(path)
+        self._post_selection_changed()
+
+    def select_all_visible(self) -> None:
+        for r in self._current_repos:
+            self._selected.add(r.path)
+        self._post_selection_changed()
+        self.populate(self._current_repos)
+
+    def clear_selection(self) -> None:
+        self._selected.clear()
+        self._post_selection_changed()
+        self.populate(self._current_repos)
+
+    def selected_repos(self) -> list[RepoInfo]:
+        return [r for r in self._current_repos if r.path in self._selected]
+
+    def _post_selection_changed(self) -> None:
+        self.post_message(self.SelectionChanged(
+            count=len(self._selected),
+            paths=list(self._selected),
+        ))
+        # Update the header to show selection count
+        self._update_selection_indicator()
+
+    def _update_selection_indicator(self) -> None:
+        try:
+            title: Static = self.query_one("#sidebar-title", Static)
+            sel = len(self._selected)
+            if sel > 0:
+                # Append selection count to current title markup — regenerate
+                pass  # handled in update_header when called after populate
+        except Exception:
+            pass
+
+    # ── Compose ─────────────────────────────────────────────────────────
+
     def compose(self) -> ComposeResult:
         yield Static(
             "⚡ [bold #7aa2f7]GitPulse[/]",
@@ -136,25 +205,44 @@ class RepoSidebar(Static):
         )
         yield ListView(id="repo-list")
 
-    def update_header(self, scanning: bool, count: int = 0) -> None:
-        """Update the title bar to show scanning state or repo count."""
+    def update_header(
+        self,
+        scanning: bool,
+        count: int = 0,
+        live: bool | None = None,
+    ) -> None:
+        """Update the title bar to show scanning state or repo count.
+
+        *live* controls the watch indicator: True = green dot, False = dim dot,
+        None = unchanged from last render.
+        """
         title: Static = self.query_one("#sidebar-title", Static)
         if scanning:
             title.update("⚡ [bold #7aa2f7]GitPulse[/]  [dim #565f89]scanning…[/]")
+            return
+        count_str = (
+            f"[dim #565f89]{count} repo{'s' if count != 1 else ''}[/]"
+            if count else ""
+        )
+        if live is True:
+            live_str = "  [bold #9ece6a]●live[/]"
+        elif live is False:
+            live_str = "  [dim #565f89]○paused[/]"
         else:
-            count_str = (
-                f"[dim #565f89]{count} repo{'s' if count != 1 else ''}[/]"
-                if count else ""
-            )
-            title.update(f"⚡ [bold #7aa2f7]GitPulse[/]  {count_str}")
+            live_str = ""
+
+        sel = len(self._selected)
+        sel_str = f"  [bold #e0af68][{sel} sel][/]" if sel > 0 else ""
+
+        title.update(f"⚡ [bold #7aa2f7]GitPulse[/]{live_str}  {count_str}{sel_str}")
 
     def populate(self, repos: list[RepoInfo]) -> None:
         """Clear and re-populate the repo list."""
+        self._current_repos = list(repos)
         list_view: ListView = self.query_one("#repo-list", ListView)
         list_view.clear()
 
         if not repos:
-            # Friendly empty state
             from textual.widgets import ListItem as _LI
             list_view.append(_LI(Static(
                 "[dim italic #565f89]\n  📂  No repositories found\n"
@@ -165,7 +253,7 @@ class RepoSidebar(Static):
             return
 
         for info in repos:
-            list_view.append(RepoListItem(info))
+            list_view.append(RepoListItem(info, selected=info.path in self._selected))
 
         # Auto-select first item
         list_view.index = 0
@@ -179,6 +267,19 @@ class RepoSidebar(Static):
         """Forward search input changes."""
         if event.input.id == "search-input":
             self.post_message(self.SearchChanged(event.value))
+
+    def on_key(self, event) -> None:
+        """Handle multi-select keys: Space toggles, * selects all."""
+        if event.key == "space":
+            lv: ListView = self.query_one("#repo-list", ListView)
+            item = lv.highlighted_child
+            if isinstance(item, RepoListItem):
+                self.toggle(item.repo_info.path)
+                self.populate(self._current_repos)
+                event.stop()
+        elif event.key == "asterisk":
+            self.select_all_visible()
+            event.stop()
 
     def focus_search(self) -> None:
         """Focus the search input."""

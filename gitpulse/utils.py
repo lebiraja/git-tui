@@ -7,7 +7,8 @@ need to live inside domain-specific files (e.g. git_ops.py).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------------------
 # Package version — single source of truth
@@ -19,6 +20,47 @@ __version__ = "1.2.0"
 # ---------------------------------------------------------------------------
 # Time helpers
 # ---------------------------------------------------------------------------
+
+def parse_since(spec: str) -> float:
+    """Parse a time-window spec into a Unix timestamp (start of the window).
+
+    Supported forms:
+        Nd  — N days ago      (e.g. "1d", "7d")
+        Nw  — N weeks ago     (e.g. "2w")
+        Nh  — N hours ago     (e.g. "4h")
+        yesterday             — start of the previous calendar day (midnight)
+        today                 — start of the current calendar day (midnight)
+        YYYY-MM-DD            — specific date (midnight)
+        YYYY-MM-DDTHH:MM      — specific datetime
+
+    Raises ValueError for unrecognised formats.
+    """
+    spec = spec.strip().lower()
+    now = datetime.now(timezone.utc)
+
+    if spec == "yesterday":
+        d = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return d.timestamp()
+    if spec == "today":
+        d = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return d.timestamp()
+
+    m = re.fullmatch(r"(\d+)([hdw])", spec)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        delta = {"h": timedelta(hours=n), "d": timedelta(days=n), "w": timedelta(weeks=n)}[unit]
+        return (now - delta).timestamp()
+
+    # ISO date or datetime
+    for fmt in ("%Y-%m-%dt%H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(spec, fmt).replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            pass
+
+    raise ValueError(f"Unrecognised time spec: {spec!r}. Try '1d', '7d', 'yesterday', or 'YYYY-MM-DD'.")
+
 
 def relative_time(ts: float) -> str:
     """Convert a Unix timestamp to a human-readable relative time string.

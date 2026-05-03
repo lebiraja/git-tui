@@ -848,21 +848,30 @@ class MainPanel(Widget):
         graph_text = get_commit_graph(repo_path, max(self._commits_n, 40))
         graph_static: Static = self.query_one("#commits-graph", Static)
         if graph_text and not graph_text.startswith("Error"):
-            # Colorize graph characters for visual richness
+            # Colorize graph characters using sentinels so successive
+            # replacements can't feed into each other (a literal '/' from
+            # an earlier '[/]' insertion must not be re-substituted).
             colored_lines: list[str] = []
+            STAR, PIPE, SLASH, BACK = "\x01", "\x02", "\x03", "\x04"
             for line in graph_text.splitlines():
-                # Highlight the short hash (7 hex chars after the graph art)
-                line_esc = re.sub(
-                    r'\b([0-9a-f]{7})\b',
-                    r'[bold #7aa2f7]\1[/]',
-                    line,
+                tagged = (
+                    line.replace("*", STAR)
+                        .replace("|", PIPE)
+                        .replace("/", SLASH)
+                        .replace("\\", BACK)
                 )
-                # Colorize graph structure characters
-                line_esc = line_esc.replace("*", "[#bb9af7]*[/]")
-                line_esc = line_esc.replace("|", "[#3b4261]|[/]")
-                line_esc = line_esc.replace("/", "[#3b4261]/[/]")
-                line_esc = line_esc.replace("\\", "[#3b4261]\\[/]")
-                colored_lines.append(line_esc)
+                tagged = re.sub(
+                    r"\b([0-9a-f]{7})\b",
+                    r"[bold #7aa2f7]\1[/]",
+                    tagged,
+                )
+                tagged = (
+                    tagged.replace(STAR, "[#bb9af7]*[/]")
+                          .replace(PIPE, "[#3b4261]|[/]")
+                          .replace(SLASH, "[#3b4261]/[/]")
+                          .replace(BACK, "[#3b4261]\\\\[/]")
+                )
+                colored_lines.append(tagged)
             graph_static.update("\n".join(colored_lines))
         else:
             graph_static.update(f"[dim italic]{graph_text or 'No commits'}[/]")
@@ -879,7 +888,7 @@ class MainPanel(Widget):
         hints: Static = self.query_one("#commits-hints", Static)
         hints.update(
             f"[dim #565f89]  {len(commits)} commits · "
-            f"[#9ece6a]+{total_ins}[/dim #565f89] / [#f7768e]-{total_del}[/dim #565f89] lines · "
+            f"[#9ece6a]+{total_ins}[/] / [#f7768e]-{total_del}[/] lines · "
             f"{total_files} files · {authors} author{'s' if authors != 1 else ''} · "
             f"Enter or d = view diff[/]"
         )

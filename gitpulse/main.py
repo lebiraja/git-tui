@@ -122,6 +122,15 @@ class GitPulseApp(App):
         if self._watch_enabled:
             cfg = _config.get()
             self.set_interval(cfg.watch.interval_seconds, self._tick_watch)
+            self.sub_title = "watch: ● live"
+        else:
+            self.sub_title = "watch: off"
+        # Focus the repo list so global letter bindings (w/d/b/r) work
+        # without keystrokes being captured by the search Input.
+        try:
+            self.set_focus(self.query_one("#repo-list"))
+        except Exception:
+            pass
 
     # -----------------------------------------------------------------
     # Actions
@@ -224,10 +233,12 @@ class GitPulseApp(App):
         sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
         if self._watch_paused:
             sidebar.update_header(scanning=False, count=len(self._all_repos), live=False)
-            self.notify("Watch mode paused — press w to resume", timeout=3)
+            self.sub_title = "watch: ○ paused"
+            self.notify("⏸  Watch mode PAUSED — press w to resume", severity="warning", timeout=4)
         else:
             sidebar.update_header(scanning=False, count=len(self._all_repos), live=True)
-            self.notify("Watch mode resumed ●", timeout=2)
+            self.sub_title = "watch: ● live"
+            self.notify("▶  Watch mode RESUMED — auto-refresh on", severity="information", timeout=3)
 
     def action_search(self) -> None:
         """Focus the search input (bound to '/')."""

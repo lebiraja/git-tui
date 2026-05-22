@@ -54,7 +54,6 @@ AppHeader {
     dock: top;
     height: 1;
     background: #111827;
-    border-bottom: solid #1f2937;
     layout: horizontal;
 }
 
@@ -94,7 +93,6 @@ HeaderTab.-active {
 
 /* ---------- Sidebar ---------- */
 #sidebar-title {
-    dock: top;
     width: 100%;
     height: 1;
     content-align: left middle;
@@ -105,7 +103,6 @@ HeaderTab.-active {
 }
 
 #search-input {
-    dock: top;
     width: 100%;
     height: 3;
     margin: 0;
@@ -124,7 +121,6 @@ Input:focus {
 }
 
 #repo-list-header {
-    dock: top;
     width: 100%;
     height: 1;
     background: #0b0f14;
@@ -133,6 +129,8 @@ Input:focus {
 }
 
 #repo-list {
+    width: 100%;
+    height: 1fr;
     background: #111827;
 }
 

@@ -63,7 +63,10 @@ class SummaryCards(Static):
                 card.update("")
             return
 
-        branch.update(f"[{_ACCENT}]{info.branch}[/]")
+        branch_name = info.branch
+        if len(branch_name) > 15:
+            branch_name = branch_name[:14] + "…"
+        branch.update(f"[{_ACCENT}]{branch_name}[/]")
 
         n_contrib = info.contributor_count
         contrib = f"{n_contrib} contributor" + ("s" if n_contrib != 1 else "")

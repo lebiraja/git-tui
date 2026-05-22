@@ -13,7 +13,7 @@ source of truth.
 ## Install
 
 ```bash
-npm install -g gitpulse
+npm install -g gitpulse-tui
 ```
 
 On install, the wrapper:
@@ -44,7 +44,7 @@ All arguments are forwarded transparently to the Python CLI.
 ## How it works
 
 ```
-npm install -g gitpulse
+npm install -g gitpulse-tui
    └─ postinstall → ~/.gitpulse/venv → pip install gitpulse-tui==<version>
 
 gitpulse <args>
@@ -77,7 +77,7 @@ GITPULSE_FORCE_REINSTALL=1 gitpulse --version
 **`Python 3.10 or newer ... not found`**
 
 Install Python 3.10+ from <https://www.python.org/downloads/>, then re-run
-`npm install -g gitpulse`.
+`npm install -g gitpulse-tui`.
 
 **The environment looks broken**
 

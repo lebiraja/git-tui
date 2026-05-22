@@ -30,9 +30,10 @@ launcher — it bootstraps an isolated Python environment and runs the same
 Python application (no logic is duplicated):
 
 ```bash
-npm install -g gitpulse
+npm install -g gitpulse-tui
 ```
 
+The CLI command is still `gitpulse` once installed.
 This requires Python 3.10+ on your system; the wrapper handles the rest.
 See [npm/README.md](./npm/README.md) for details and troubleshooting.
 

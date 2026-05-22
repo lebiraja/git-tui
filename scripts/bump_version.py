@@ -56,6 +56,14 @@ def main() -> None:
         rf'\g<1>"{new_version}"',
     )
 
+    # Update npm/package.json — keeps the npm wrapper version in lockstep
+    # with the PyPI release (npm vX.Y.Z installs gitpulse-tui==X.Y.Z).
+    update_file(
+        "npm/package.json",
+        r'("version"\s*:\s*)"([^"]+)"',
+        rf'\g<1>"{new_version}"',
+    )
+
     # Output the new version so GitHub Actions can capture it
     print(new_version)
 

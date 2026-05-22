@@ -1,0 +1,44 @@
+{
+  "name": "gitpulse",
+  "version": "1.2.2",
+  "description": "Git Repo Dashboard TUI — npm launcher for the Python GitPulse package (gitpulse-tui on PyPI)",
+  "bin": {
+    "gitpulse": "bin/gitpulse.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "keywords": [
+    "git",
+    "tui",
+    "terminal",
+    "dashboard",
+    "cli",
+    "textual"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lebiraja/gitpulse.git"
+  },
+  "homepage": "https://github.com/lebiraja/gitpulse#readme",
+  "bugs": {
+    "url": "https://github.com/lebiraja/gitpulse/issues"
+  },
+  "author": "lebiraja",
+  "license": "AGPL-3.0"
+}

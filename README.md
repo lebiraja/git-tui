@@ -23,11 +23,11 @@ local Git repository.
 
 ![GitPulse demo](ss/gitpulse.gif)
 
-**📋 Status tab** — repo summary panel, staged/unstaged/untracked file lists, stash entries
+**Status tab** — repo summary cards, staged/unstaged/untracked/stash workspace, and the file tree / recent commits / remote summary side panels
 
 ![Status tab](ss/status.png)
 
-**📝 Commits tab** — last N commits with color-coded insertions/deletions
+**Commits tab** — last N commits with color-coded insertions/deletions
 
 ![Commits tab](ss/commits.png)
 

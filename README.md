@@ -23,6 +23,19 @@ pip install gitpulse-tui
 ```
 *(We recommend using `pipx install gitpulse-tui` to install it in an isolated environment)*
 
+### Install via npm
+
+GitPulse is also available as an npm package. The npm package is a thin
+launcher — it bootstraps an isolated Python environment and runs the same
+Python application (no logic is duplicated):
+
+```bash
+npm install -g gitpulse
+```
+
+This requires Python 3.10+ on your system; the wrapper handles the rest.
+See [npm/README.md](./npm/README.md) for details and troubleshooting.
+
 ### Install from source
 
 If you prefer to install from source or want to contribute to the project:

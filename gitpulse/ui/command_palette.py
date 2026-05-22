@@ -39,19 +39,19 @@ class CommandPaletteModal(ModalScreen):
         height: auto;
         max-height: 24;
         padding: 1 2;
-        background: #1a1a24;
-        border: thick #ff2d4a;
+        background: #111827;
+        border: solid #8b5cf6;
     }
     #palette-title {
         text-style: bold;
-        color: #ff2d4a;
+        color: #8b5cf6;
         margin-bottom: 1;
         text-align: center;
         width: 100%;
         height: 1;
     }
     #palette-scope {
-        color: #ffb74d;
+        color: #f59e0b;
         margin-bottom: 1;
         width: 100%;
         height: 1;
@@ -79,7 +79,7 @@ class CommandPaletteModal(ModalScreen):
             else "current repo"
         )
         with Container(id="palette-frame"):
-            yield Static("⚡ Bulk Action", id="palette-title", markup=False)
+            yield Static("Bulk Action", id="palette-title", markup=False)
             yield Static(f"  Scope: {scope_text}", id="palette-scope", markup=False)
             yield Input(placeholder="Filter actions…", id="palette-input")
             yield ListView(id="palette-list")
@@ -93,7 +93,7 @@ class CommandPaletteModal(ModalScreen):
         lv.clear()
         for key, label, desc in actions:
             lv.append(ListItem(
-                Static(f"[bold #3ddc84]{label}[/]  [dim #555568]{desc}[/]", markup=True),
+                Static(f"[bold #22c55e]{label}[/]  [dim #6b7280]{desc}[/]", markup=True),
                 id=f"action-{key}",
             ))
         if actions:

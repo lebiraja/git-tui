@@ -30,14 +30,14 @@ class BulkResultsScreen(ModalScreen):
     #results-frame {
         width: 88%;
         height: 75%;
-        background: #1a1a24;
-        border: thick #e040fb;
+        background: #111827;
+        border: solid #8b5cf6;
     }
     #results-title {
         dock: top;
         height: 1;
-        background: #242430;
-        color: #e040fb;
+        background: #1f2937;
+        color: #8b5cf6;
         text-style: bold;
         padding: 0 1;
     }
@@ -48,10 +48,10 @@ class BulkResultsScreen(ModalScreen):
     #results-footer {
         dock: bottom;
         height: 1;
-        background: #1a1a24;
-        color: #555568;
+        background: #111827;
+        color: #6b7280;
         padding: 0 1;
-        border-top: solid #2a2a3a;
+        border-top: solid #1f2937;
     }
     """
 
@@ -87,13 +87,13 @@ class BulkResultsScreen(ModalScreen):
         self._completed += 1
 
         if isinstance(result, Exception):
-            status = "[bold #ff5252]ERROR[/]"
+            status = "[bold #ef4444]ERROR[/]"
             output = str(result)[:80]
         elif isinstance(result, str) and result.lower().startswith("error"):
-            status = "[bold #ff5252]FAIL[/]"
+            status = "[bold #ef4444]FAIL[/]"
             output = result[:80]
         else:
-            status = "[bold #3ddc84]OK[/]"
+            status = "[bold #22c55e]OK[/]"
             output = (str(result) if result else "done")[:80]
 
         table.add_row(repo.name, status, output)

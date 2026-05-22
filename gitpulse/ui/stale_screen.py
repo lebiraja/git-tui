@@ -38,11 +38,11 @@ class DeleteConfirmModal(ModalScreen):
         width: 56;
         height: auto;
         padding: 1 2;
-        background: #1a1a24;
-        border: thick #ff5252;
+        background: #111827;
+        border: solid #ef4444;
     }
-    #dconf-title { color: #ff5252; text-style: bold; margin-bottom: 1; }
-    #dconf-info  { color: #ffb74d; margin-bottom: 1; }
+    #dconf-title { color: #ef4444; text-style: bold; margin-bottom: 1; }
+    #dconf-info  { color: #f59e0b; margin-bottom: 1; }
     #dconf-input { width: 100%; margin-bottom: 1; }
     #dconf-btns  { layout: horizontal; width: 100%; height: 3; align: center middle; }
     """
@@ -54,7 +54,7 @@ class DeleteConfirmModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Container(id="dconf-frame"):
-            yield Static(f"⚠ Delete {self._count} branch{'es' if self._count != 1 else ''}?", id="dconf-title", markup=False)
+            yield Static(f"Delete {self._count} branch{'es' if self._count != 1 else ''}?", id="dconf-title", markup=False)
             yield Static(f'  Type exactly: {self._phrase}', id="dconf-info", markup=False)
             yield Input(placeholder=self._phrase, id="dconf-input")
             with Horizontal(id="dconf-btns"):
@@ -101,14 +101,14 @@ class StaleScreen(ModalScreen):
     #stale-frame {
         width: 96%;
         height: 90%;
-        background: #1a1a24;
-        border: thick #e040fb;
+        background: #111827;
+        border: solid #8b5cf6;
     }
     #stale-header {
         dock: top;
         height: 1;
-        background: #242430;
-        color: #e040fb;
+        background: #1f2937;
+        color: #8b5cf6;
         text-style: bold;
         padding: 0 1;
     }
@@ -116,10 +116,10 @@ class StaleScreen(ModalScreen):
     #stale-footer {
         dock: bottom;
         height: 1;
-        background: #1a1a24;
-        color: #555568;
+        background: #111827;
+        color: #6b7280;
         padding: 0 1;
-        border-top: solid #2a2a3a;
+        border-top: solid #1f2937;
     }
     """
 
@@ -142,7 +142,7 @@ class StaleScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Container(id="stale-frame"):
-            yield Static(" ☠ Stale Branches", id="stale-header", markup=False)
+            yield Static("Stale Branches", id="stale-header", markup=False)
             with TabbedContent(id="stale-tabs"):
                 for cat, label in [
                     ("stale",    f"Stale ({self._stale_weeks}w+)"),
@@ -170,7 +170,7 @@ class StaleScreen(ModalScreen):
 
     def _load_data(self) -> None:
         self.query_one("#stale-header", Static).update(
-            " ☠ Stale Branches  [dim #555568]loading…[/]"
+            "Stale Branches  [dim #6b7280]loading…[/]"
         )
         self.run_worker(self._fetch_worker, thread=True, group="stale")
 
@@ -187,10 +187,10 @@ class StaleScreen(ModalScreen):
         if event.state == WorkerState.SUCCESS and event.worker.result is not None:
             self._categories = event.worker.result
             self._populate_tables()
-            self.query_one("#stale-header", Static).update(" ☠ Stale Branches")
+            self.query_one("#stale-header", Static).update("Stale Branches")
         elif event.state == WorkerState.ERROR:
             self.query_one("#stale-header", Static).update(
-                f" ☠ Error: {event.worker.error}"
+                f"Error: {event.worker.error}"
             )
 
     def _populate_tables(self) -> None:
@@ -199,11 +199,11 @@ class StaleScreen(ModalScreen):
             table.clear()
             for b in sorted(branches, key=lambda x: x.age_days, reverse=True):
                 sel_key = (b.repo_name, b.name)
-                checkbox = "[bold #3ddc84]✓[/]" if sel_key in self._selected else "[ ]"
+                checkbox = "[bold #22c55e]✓[/]" if sel_key in self._selected else "[ ]"
                 flags = []
-                if b.is_wip:                 flags.append("[#ffb74d]WIP[/]")
-                if b.is_merged_into_default: flags.append("[#3ddc84]merged[/]")
-                if b.is_current:             flags.append("[#ff2d4a]current[/]")
+                if b.is_wip:                 flags.append("[#f59e0b]WIP[/]")
+                if b.is_merged_into_default: flags.append("[#22c55e]merged[/]")
+                if b.is_current:             flags.append("[#8b5cf6]current[/]")
                 if not b.has_upstream:       flags.append("[dim]no-remote[/]")
                 flags_str = " ".join(flags) if flags else "[dim]—[/]"
                 age_str = f"{b.age_days}d"

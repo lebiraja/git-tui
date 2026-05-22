@@ -28,6 +28,7 @@ try:
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
     from gitpulse.ui.header import AppHeader, TAB_IDS
+    from gitpulse.ui.help_modal import HelpModal
     from gitpulse.ui.fleet_status import FleetStatus
     from gitpulse.ui.digest_screen import DigestScreen
     from gitpulse.ui.command_palette import CommandPaletteModal
@@ -46,6 +47,7 @@ except ImportError:
     from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
     from ui.tabs import MainPanel  # type: ignore[no-redef]
     from ui.header import AppHeader, TAB_IDS  # type: ignore[no-redef]
+    from ui.help_modal import HelpModal  # type: ignore[no-redef]
     from ui.fleet_status import FleetStatus  # type: ignore[no-redef]
     from ui.digest_screen import DigestScreen  # type: ignore[no-redef]
     from ui.command_palette import CommandPaletteModal  # type: ignore[no-redef]
@@ -83,6 +85,7 @@ class GitPulseApp(App):
         Binding("shift+tab", "focus_previous", "Prev", show=False),
         Binding("right_square_bracket", "next_tab", "Next Tab", show=False),
         Binding("left_square_bracket", "prev_tab", "Prev Tab", show=False),
+        Binding("question_mark", "open_help", "Help", show=True),
     ]
 
     def __init__(
@@ -281,6 +284,10 @@ class GitPulseApp(App):
     def on_app_header_tab_changed(self, message: AppHeader.TabChanged) -> None:
         """User clicked a tab in the header."""
         self._switch_tab(message.tab_id)
+
+    def action_open_help(self) -> None:
+        """Show the keyboard-shortcut cheat sheet (bound to '?')."""
+        self.push_screen(HelpModal())
 
     def action_clear_search(self) -> None:
         """Clear search and refocus repo list."""

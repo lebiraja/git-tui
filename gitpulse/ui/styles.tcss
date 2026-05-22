@@ -31,9 +31,9 @@ Screen {
 }
 
 #sidebar-column {
-    width: 38;
-    min-width: 30;
-    max-width: 48;
+    width: 46;
+    min-width: 38;
+    max-width: 54;
     background: #111827;
     border-right: solid #1f2937;
 }
@@ -137,7 +137,7 @@ Input:focus {
 }
 
 RepoListItem {
-    height: auto;
+    height: 1;
     background: #111827;
     padding: 0 1;
 }

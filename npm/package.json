@@ -1,6 +1,6 @@
 {
   "name": "gitpulse-tui",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "description": "Git Repo Dashboard TUI — npm launcher for the Python GitPulse package (gitpulse-tui on PyPI)",
   "bin": {
     "gitpulse": "bin/gitpulse.js"

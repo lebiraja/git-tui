@@ -19,6 +19,10 @@ local Git repository.
 
 ## Screenshots
 
+**Demo** — GitPulse in action
+
+![GitPulse demo](ss/gitpulse.gif)
+
 **📋 Status tab** — repo summary panel, staged/unstaged/untracked file lists, stash entries
 
 ![Status tab](ss/status.png)

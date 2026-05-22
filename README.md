@@ -4,7 +4,24 @@ A developer-focused terminal dashboard that scans a root directory for all local
 
 Built with **Python**, **Textual**, **Rich**, and **GitPython**.
 
+## Why GitPulse?
+
+A lot of development happens late at night, and not everyone commits or pushes
+their changes right away. With "vibe coding" becoming so popular, many people
+now juggle several projects at once — and that makes it genuinely hard to keep
+track of every local repository.
+
+GitPulse exists to solve exactly that. It gives you a single dashboard for all
+your local repos, so at a glance you can see what's committed but not yet
+pushed, what's changed but not yet committed, the number of modified files, the
+current branch, the last commit, and everything else about the state of each
+local Git repository.
+
 ## Screenshots
+
+**Demo** — GitPulse in action
+
+![GitPulse demo](ss/gitpulse.gif)
 
 **📋 Status tab** — repo summary panel, staged/unstaged/untracked file lists, stash entries
 

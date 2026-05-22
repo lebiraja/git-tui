@@ -16,7 +16,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Footer, Input
+from textual.widgets import Footer, Input
 from textual.containers import Horizontal, Vertical
 from textual.worker import Worker, WorkerState
 
@@ -27,6 +27,8 @@ try:
     from gitpulse.git_ops import get_repo_info, switch_branch, RepoInfo
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
+    from gitpulse.ui.header import AppHeader, TAB_IDS
+    from gitpulse.ui.help_modal import HelpModal
     from gitpulse.ui.fleet_status import FleetStatus
     from gitpulse.ui.digest_screen import DigestScreen
     from gitpulse.ui.command_palette import CommandPaletteModal
@@ -44,6 +46,8 @@ except ImportError:
     from git_ops import get_repo_info, switch_branch, RepoInfo  # type: ignore[no-redef]
     from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
     from ui.tabs import MainPanel  # type: ignore[no-redef]
+    from ui.header import AppHeader, TAB_IDS  # type: ignore[no-redef]
+    from ui.help_modal import HelpModal  # type: ignore[no-redef]
     from ui.fleet_status import FleetStatus  # type: ignore[no-redef]
     from ui.digest_screen import DigestScreen  # type: ignore[no-redef]
     from ui.command_palette import CommandPaletteModal  # type: ignore[no-redef]
@@ -79,6 +83,9 @@ class GitPulseApp(App):
         Binding("escape", "clear_search", "Clear", show=False),
         Binding("tab", "focus_next", "Next", show=False),
         Binding("shift+tab", "focus_previous", "Prev", show=False),
+        Binding("right_square_bracket", "next_tab", "Next Tab", show=False),
+        Binding("left_square_bracket", "prev_tab", "Prev Tab", show=False),
+        Binding("question_mark", "open_help", "Help", show=True),
     ]
 
     def __init__(
@@ -105,7 +112,7 @@ class GitPulseApp(App):
     # -----------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader(id="app-header")
         with Horizontal(id="app-grid"):
             with Vertical(id="sidebar-column"):
                 yield FleetStatus(id="fleet-status")
@@ -249,6 +256,38 @@ class GitPulseApp(App):
         """Focus the search input (bound to '/')."""
         sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
         sidebar.focus_search()
+
+    def action_next_tab(self) -> None:
+        """Switch to the next content tab (bound to ']')."""
+        self._cycle_tab(1)
+
+    def action_prev_tab(self) -> None:
+        """Switch to the previous content tab (bound to '[')."""
+        self._cycle_tab(-1)
+
+    def _cycle_tab(self, delta: int) -> None:
+        main: MainPanel = self.query_one("#main-panel", MainPanel)
+        current = main._active_tab()
+        try:
+            idx = TAB_IDS.index(current)
+        except ValueError:
+            idx = 0
+        self._switch_tab(TAB_IDS[(idx + delta) % len(TAB_IDS)])
+
+    def _switch_tab(self, tab_id: str) -> None:
+        """Switch the active content tab and sync the header highlight."""
+        header: AppHeader = self.query_one("#app-header", AppHeader)
+        header.set_active(tab_id)
+        main: MainPanel = self.query_one("#main-panel", MainPanel)
+        main.show_tab(tab_id)
+
+    def on_app_header_tab_changed(self, message: AppHeader.TabChanged) -> None:
+        """User clicked a tab in the header."""
+        self._switch_tab(message.tab_id)
+
+    def action_open_help(self) -> None:
+        """Show the keyboard-shortcut cheat sheet (bound to '?')."""
+        self.push_screen(HelpModal())
 
     def action_clear_search(self) -> None:
         """Clear search and refocus repo list."""

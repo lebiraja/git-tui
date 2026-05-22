@@ -289,6 +289,7 @@ SummaryCards {
     height: 4;
     layout: horizontal;
     background: #0b0f14;
+    margin: 1 0 0 0;
 }
 
 SummaryCard {
@@ -305,16 +306,19 @@ SummaryCard {
 #status-body {
     layout: horizontal;
     height: 1fr;
+    margin: 1 0 0 0;
 }
 
 #status-workspace {
     width: 1fr;
     height: 1fr;
+    border: solid #1f2937;
+    margin: 0 1 0 0;
 }
 
 #status-rightbar {
-    width: 34;
-    min-width: 26;
+    width: 36;
+    min-width: 28;
     height: 1fr;
     layout: vertical;
 }
@@ -322,12 +326,26 @@ SummaryCard {
 #status-rightbar > .panel {
     height: 1fr;
     margin: 0 0 1 0;
+    padding: 0 1;
 }
 
 .empty-state {
     width: 100%;
     height: 100%;
     content-align: center middle;
+    color: #6b7280;
+}
+
+ListItem.empty-row {
+    height: 1fr;
+    background: #0b0f14;
+    content-align: center middle;
+}
+
+ListItem.empty-row > Static {
+    width: 100%;
+    content-align: center middle;
+    text-align: center;
     color: #6b7280;
 }
 

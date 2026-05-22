@@ -54,6 +54,7 @@ try:
         BranchInfo, RepoInfo,
     )
     from gitpulse.utils import relative_time
+    from gitpulse.ui.summary_cards import SummaryCards
 except ImportError:
     from git_ops import (  # type: ignore[no-redef]
         get_status, get_commits, get_branches,
@@ -67,6 +68,7 @@ except ImportError:
         BranchInfo, RepoInfo,
     )
     from utils import relative_time  # type: ignore[no-redef]
+    from ui.summary_cards import SummaryCards  # type: ignore[no-redef]
 
 
 # ── Icons ──────────────────────────────────────────────────────────────────
@@ -575,14 +577,14 @@ class StatusFileItem(ListItem):
         self.file_status = status  # "staged" | "unstaged" | "untracked"
         t = Text(overflow="ellipsis", no_wrap=True)
         if status == "staged":
-            t.append("+ staged    ", style="bold #3ddc84")
-            t.append(filepath, style="#3ddc84")
+            t.append("+ ", style="bold #22c55e")
+            t.append(filepath, style="#d1d5db")
         elif status == "unstaged":
-            t.append("~ unstaged  ", style="#ffb74d")
-            t.append(filepath, style="#ffb74d")
+            t.append("~ ", style="bold #f59e0b")
+            t.append(filepath, style="#d1d5db")
         else:
-            t.append("? untracked ", style="#ff5252")
-            t.append(filepath, style="#ff5252")
+            t.append("? ", style="bold #ef4444")
+            t.append(filepath, style="#d1d5db")
         super().__init__(Static(t), **kwargs)
 
 
@@ -642,16 +644,29 @@ class MainPanel(Widget):
             # ── Status ──
             with Vertical(id="pane-status", classes="content-pane"):
                 yield Static(
-                    "[#6b7280]Select a repository to view working tree status[/]",
-                    id="status-summary",
+                    "[#6b7280]Select a repository[/]",
+                    id="repo-header",
                     markup=True,
                 )
-                yield ListView(id="status-file-list")
-                yield Static(
-                    "[#6b7280]  s stage   u unstage   a stage-all   c commit   z stash[/]",
-                    id="status-hints",
-                    markup=True,
-                )
+                yield SummaryCards(id="summary-cards")
+                with Horizontal(id="status-body"):
+                    with Vertical(id="status-workspace"):
+                        with TabbedContent(id="workspace-tabs"):
+                            with TabPane("Staged", id="ws-staged"):
+                                yield ListView(id="staged-list")
+                            with TabPane("Unstaged", id="ws-unstaged"):
+                                yield ListView(id="unstaged-list")
+                            with TabPane("Untracked", id="ws-untracked"):
+                                yield ListView(id="untracked-list")
+                            with TabPane("Stashes", id="ws-stashes"):
+                                yield ListView(id="stashes-list")
+                    with Vertical(id="status-rightbar"):
+                        with ScrollableContainer(classes="panel", id="panel-tree"):
+                            yield Static("", id="status-tree", markup=True)
+                        with ScrollableContainer(classes="panel", id="panel-commits"):
+                            yield Static("", id="status-commits", markup=True)
+                        with ScrollableContainer(classes="panel", id="panel-remotes"):
+                            yield Static("", id="status-remotes", markup=True)
 
             # ── Commits ──
             with Vertical(id="pane-commits", classes="content-pane"):
@@ -738,6 +753,16 @@ class MainPanel(Widget):
         tt.cursor_type = "row"
         tt.zebra_stripes = True
 
+        for panel_id, title in (
+            ("#panel-tree", "FILE TREE"),
+            ("#panel-commits", "RECENT COMMITS"),
+            ("#panel-remotes", "REMOTE SUMMARY"),
+        ):
+            try:
+                self.query_one(panel_id).border_title = title
+            except Exception:
+                pass
+
     # ── Public API ───────────────────────────────────────────────────
 
     def load_repo(self, repo_path: Path, repo_info: RepoInfo | None = None) -> None:
@@ -791,67 +816,103 @@ class MainPanel(Widget):
         fs = get_status(repo_path)
         stashes = get_stashes(repo_path)
 
-        header = Text()
-        header.append("  Path:   ", style="bold #ff2d4a")
-        header.append(str(repo_path) + "\n", style="dim #555568")
-        if info:
-            rel = relative_time(info.last_commit_ts)
-            header.append("  Branch: ", style="bold #ff2d4a")
-            header.append(info.branch + "\n", style="#e040fb")
-            header.append("  Commit: ", style="bold #ff2d4a")
-            header.append(info.last_commit_msg, style="dim")
-            header.append(f"  ({rel})\n", style="dim #555568")
-            header.append("  Stats:  ", style="bold #ff2d4a")
-            header.append(str(info.total_commits), style="#3ddc84")
-            header.append(" commits · ")
-            header.append(str(info.contributor_count), style="#ffb74d")
-            n_contrib = info.contributor_count
-            header.append(f" contributor{'s' if n_contrib != 1 else ''}")
-        if stashes:
-            header.append(f"\n  Stashes: ", style="bold #ff2d4a")
-            header.append(str(len(stashes)), style="#4dd0e1")
-            header.append(f" ({', '.join(s.message[:30] for s in stashes[:2])})", style="dim")
-
-        summary_panel = Panel(
-            header,
-            title=f"[bold #d4d4dc] {repo_path.name} [/]",
-            border_style="#2a2a3a",
-            padding=(0, 0),
+        # ── Repo header line ─────────────────────────────────────────
+        rel = relative_time(info.last_commit_ts) if info else ""
+        header: Static = self.query_one("#repo-header", Static)
+        header.update(
+            f"[bold #d1d5db]{repo_path.name}[/]   "
+            f"[#6b7280]Path:[/] [#d1d5db]{repo_path}[/]   "
+            f"[#6b7280]updated {rel}[/]"
         )
-        self.query_one("#status-summary", Static).update(summary_panel)
 
-        file_list: ListView = self.query_one("#status-file-list", ListView)
-        file_list.clear()
+        # ── Summary cards ────────────────────────────────────────────
+        self.query_one("#summary-cards", SummaryCards).update_cards(info, stashes)
 
-        if not fs.staged and not fs.unstaged and not fs.untracked:
-            file_list.append(
-                ListItem(Static(
-                    "[bold #3ddc84]  ✨ Working tree clean — nothing to commit[/]",
-                    markup=True,
-                ))
-            )
+        # ── Workspace sub-tab lists ──────────────────────────────────
+        self._fill_ws_list("#staged-list", fs.staged, "staged",
+                            "No changes staged")
+        self._fill_ws_list("#unstaged-list", fs.unstaged, "unstaged",
+                            "No unstaged changes")
+        self._fill_ws_list("#untracked-list", fs.untracked, "untracked",
+                            "No untracked files")
+        self._fill_stash_list(stashes)
+
+        # ── Right-hand panels ────────────────────────────────────────
+        self._load_status_panels(repo_path)
+
+    def _empty_row(self, message: str) -> ListItem:
+        """Build a centered empty-state row for an empty workspace list."""
+        item = ListItem(Static(
+            f"[#22c55e]✓[/]\n[#d1d5db]{message}[/]\n"
+            f"[#6b7280]Working tree is clean[/]",
+            markup=True,
+        ))
+        item.add_class("empty-row")
+        return item
+
+    def _fill_ws_list(
+        self, list_id: str, files: list[str], status: str, empty_msg: str
+    ) -> None:
+        lv: ListView = self.query_one(list_id, ListView)
+        lv.clear()
+        if not files:
+            lv.append(self._empty_row(empty_msg))
+            return
+        for f in files:
+            lv.append(StatusFileItem(f, status))
+
+    def _fill_stash_list(self, stashes: list) -> None:
+        lv: ListView = self.query_one("#stashes-list", ListView)
+        lv.clear()
+        if not stashes:
+            lv.append(self._empty_row("No stashes"))
+            return
+        for s in stashes:
+            t = Text(overflow="ellipsis", no_wrap=True)
+            t.append(f"stash@{{{s.index}}} ", style="bold #8b5cf6")
+            t.append(s.message, style="#d1d5db")
+            lv.append(ListItem(Static(t)))
+
+    def _load_status_panels(self, repo_path: Path) -> None:
+        """Populate the three right-hand panels: tree, commits, remotes."""
+        # File tree (Rich tree renderable)
+        try:
+            tree = get_file_tree(repo_path)
+        except Exception:
+            tree = "[#6b7280]No tracked files[/]"
+        self.query_one("#status-tree", Static).update(tree)
+
+        # Recent commits — compact list
+        commits = get_commits(repo_path, 6)
+        if commits:
+            lines: list[str] = []
+            for c in commits:
+                author = c.author.split("<")[0].strip()
+                lines.append(
+                    f"[#d1d5db]{c.message[:34]}[/]\n"
+                    f"[#6b7280]{c.date}  ·  {author}  [/]"
+                    f"[#8b5cf6]{c.short_hash}[/]"
+                )
+            self.query_one("#status-commits", Static).update("\n".join(lines))
         else:
-            if fs.staged:
-                file_list.append(ListItem(Static(
-                    f"[bold #3ddc84]  ✔ Staged[/] [dim #555568]({len(fs.staged)} file{'s' if len(fs.staged) != 1 else ''})[/]",
-                    markup=True,
-                )))
-                for f in fs.staged:
-                    file_list.append(StatusFileItem(f, "staged"))
-            if fs.unstaged:
-                file_list.append(ListItem(Static(
-                    f"[bold #ffb74d]  ● Unstaged[/] [dim #555568]({len(fs.unstaged)} file{'s' if len(fs.unstaged) != 1 else ''})[/]",
-                    markup=True,
-                )))
-                for f in fs.unstaged:
-                    file_list.append(StatusFileItem(f, "unstaged"))
-            if fs.untracked:
-                file_list.append(ListItem(Static(
-                    f"[bold #ff5252]  ○ Untracked[/] [dim #555568]({len(fs.untracked)} file{'s' if len(fs.untracked) != 1 else ''})[/]",
-                    markup=True,
-                )))
-                for f in fs.untracked:
-                    file_list.append(StatusFileItem(f, "untracked"))
+            self.query_one("#status-commits", Static).update(
+                "[#6b7280]No commits[/]"
+            )
+
+        # Remote summary
+        remotes = get_remotes(repo_path)
+        if remotes:
+            lines = []
+            for r in remotes:
+                lines.append(
+                    f"[#d1d5db]{r.name}[/]   "
+                    f"[#22c55e]↑ {r.ahead}[/]   [#ef4444]↓ {r.behind}[/]"
+                )
+            self.query_one("#status-remotes", Static).update("\n".join(lines))
+        else:
+            self.query_one("#status-remotes", Static).update(
+                "[#6b7280]No remotes configured[/]"
+            )
 
     def _load_commits(self, repo_path: Path) -> None:
         table: DataTable = self.query_one("#commits-table", DataTable)
@@ -1078,11 +1139,34 @@ class MainPanel(Widget):
 
     # ── Actions ──────────────────────────────────────────────────────
 
+    def _active_ws_list(self) -> ListView | None:
+        """Return the ListView of the active Status workspace sub-tab."""
+        try:
+            tc: TabbedContent = self.query_one("#workspace-tabs", TabbedContent)
+            pane = str(tc.active) if tc.active else ""
+        except Exception:
+            return None
+        mapping = {
+            "ws-staged": "#staged-list",
+            "ws-unstaged": "#unstaged-list",
+            "ws-untracked": "#untracked-list",
+            "ws-stashes": "#stashes-list",
+        }
+        list_id = mapping.get(pane)
+        if not list_id:
+            return None
+        try:
+            return self.query_one(list_id, ListView)
+        except Exception:
+            return None
+
     def action_stage_file(self) -> None:
         if self._current_repo is None or self._active_tab() != "status":
             return
-        fl: ListView = self.query_one("#status-file-list", ListView)
-        item = fl.highlighted_child
+        lv = self._active_ws_list()
+        if lv is None:
+            return
+        item = lv.highlighted_child
         if isinstance(item, StatusFileItem) and item.file_status in ("unstaged", "untracked"):
             msg = stage_files(self._current_repo, [item.filepath])
             self.app.notify(msg, timeout=2)
@@ -1092,8 +1176,10 @@ class MainPanel(Widget):
     def action_unstage_file(self) -> None:
         if self._current_repo is None or self._active_tab() != "status":
             return
-        fl: ListView = self.query_one("#status-file-list", ListView)
-        item = fl.highlighted_child
+        lv = self._active_ws_list()
+        if lv is None:
+            return
+        item = lv.highlighted_child
         if isinstance(item, StatusFileItem) and item.file_status == "staged":
             msg = unstage_files(self._current_repo, [item.filepath])
             self.app.notify(msg, timeout=2)

@@ -29,6 +29,7 @@ from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import (
     Button,
+    ContentSwitcher,
     DataTable,
     Input,
     ListItem,
@@ -625,111 +626,103 @@ class MainPanel(Widget):
         self._commits_n = commits
         self._loaded_tabs: set[str] = set()
         self._tab_loaders: dict[str, str] = {
-            "tab-status":   "_load_status",
-            "tab-commits":  "_load_commits",
-            "tab-diff":     "_load_diff",
-            "tab-branches": "_load_branches",
-            "tab-remotes":  "_load_remotes",
-            "tab-tags":     "_load_tags",
-            "tab-tree":     "_load_tree",
+            "status":   "_load_status",
+            "commits":  "_load_commits",
+            "diff":     "_load_diff",
+            "branches": "_load_branches",
+            "remotes":  "_load_remotes",
+            "tags":     "_load_tags",
+            "tree":     "_load_tree",
         }
 
     # ── Compose ──────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        with TabbedContent(
-            "📋 Status",
-            "📝 Commits",
-            "🔀 Diff",
-            "🌿 Branches",
-            "🌐 Remotes",
-            "🏷️ Tags",
-            "🌲 Tree",
-        ):
+        with ContentSwitcher(initial="pane-status", id="main-content"):
             # ── Status ──
-            with TabPane("📋 Status", id="tab-status"):
+            with Vertical(id="pane-status", classes="content-pane"):
                 yield Static(
-                    "[dim italic]📋 Select a repository to view working tree status[/]",
+                    "[#6b7280]Select a repository to view working tree status[/]",
                     id="status-summary",
                     markup=True,
                 )
                 yield ListView(id="status-file-list")
                 yield Static(
-                    f"[dim #555568]  s=stage  u=unstage  a=stage-all  U=unstage-all  c=commit  z=stash  Z=pop-stash[/]",
+                    "[#6b7280]  s stage   u unstage   a stage-all   c commit   z stash[/]",
                     id="status-hints",
                     markup=True,
                 )
 
             # ── Commits ──
-            with TabPane("📝 Commits", id="tab-commits"):
+            with Vertical(id="pane-commits", classes="content-pane"):
                 with Vertical(id="commits-layout"):
                     with ScrollableContainer(id="commits-graph-scroll"):
                         yield Static(
-                            "[dim italic]📝 Select a repository to view commit graph[/]",
+                            "[#6b7280]Select a repository to view commit graph[/]",
                             id="commits-graph",
                             markup=True,
                         )
                     yield DataTable(id="commits-table")
                 yield Static(
-                    "[dim #555568]  Enter or d = view commit diff[/]",
+                    "[#6b7280]  Enter or d = view commit diff[/]",
                     id="commits-hints",
                     markup=True,
                 )
 
             # ── Diff ──
-            with TabPane("🔀 Diff", id="tab-diff"):
+            with Vertical(id="pane-diff", classes="content-pane"):
                 with Horizontal(id="diff-layout"):
                     with Vertical(id="diff-file-panel"):
                         yield Static(
-                            "[bold #ff2d4a] Files[/]",
+                            "[bold #6b7280] Files[/]",
                             id="diff-file-header",
                             markup=True,
                         )
                         yield ListView(id="diff-file-list")
                     with ScrollableContainer(id="diff-view-panel"):
                         yield Static(
-                            "[dim italic]🔀 Select a file from the left panel to view its diff[/]",
+                            "[#6b7280]Select a file from the left panel to view its diff[/]",
                             id="diff-content",
                             markup=True,
                         )
                 yield Static(
-                    "[dim #555568]  + staged  ~ unstaged  ? untracked  ·  ↑↓ to navigate files[/]",
+                    "[#6b7280]  + staged   ~ unstaged   ? untracked   ·   ↑↓ to navigate files[/]",
                     id="diff-footer",
                     markup=True,
                 )
 
             # ── Branches ──
-            with TabPane("🌿 Branches", id="tab-branches"):
+            with Vertical(id="pane-branches", classes="content-pane"):
                 yield ListView(id="branch-list")
                 yield Static(
-                    "[dim #555568]  Enter=switch branch  n=new branch  d=delete branch[/]",
+                    "[#6b7280]  Enter switch branch   n new branch   d delete branch[/]",
                     id="branch-hints",
                     markup=True,
                 )
 
             # ── Remotes ──
-            with TabPane("🌐 Remotes", id="tab-remotes"):
+            with Vertical(id="pane-remotes", classes="content-pane"):
                 with ScrollableContainer(id="remotes-scroll"):
                     yield Static(
-                        "[dim italic]🌐 Select a repository to view remote configuration[/]",
+                        "[#6b7280]Select a repository to view remote configuration[/]",
                         id="remotes-content",
                         markup=True,
                     )
                 yield Static(
-                    "[dim #555568]  f=fetch  p=pull  P=push[/]",
+                    "[#6b7280]  f fetch   p pull   P push[/]",
                     id="remotes-hints",
                     markup=True,
                 )
 
             # ── Tags ──
-            with TabPane("🏷️ Tags", id="tab-tags"):
+            with Vertical(id="pane-tags", classes="content-pane"):
                 yield DataTable(id="tags-table")
 
             # ── Tree ──
-            with TabPane("🌲 Tree", id="tab-tree"):
-                yield Tree("🌲 Select a repository to browse files", id="tree-widget")
+            with Vertical(id="pane-tree", classes="content-pane"):
+                yield Tree("Select a repository to browse files", id="tree-widget")
                 yield Static(
-                    "[dim #555568]  ↑↓ navigate  Enter = preview file[/]",
+                    "[#6b7280]  ↑↓ navigate   Enter = preview file[/]",
                     id="tree-hints",
                     markup=True,
                 )
@@ -751,12 +744,25 @@ class MainPanel(Widget):
         self._current_repo = repo_path
         self._current_info = repo_info
         self._loaded_tabs.clear()
+        self._load_tab(self._active_tab())
+
+    def show_tab(self, tab_id: str) -> None:
+        """Switch the visible pane (driven by AppHeader.TabChanged)."""
         try:
-            tc: TabbedContent = self.query_one(TabbedContent)
-            active_id = str(tc.active) if tc.active else "tab-status"
+            cs: ContentSwitcher = self.query_one("#main-content", ContentSwitcher)
+            cs.current = f"pane-{tab_id}"
         except Exception:
-            active_id = "tab-status"
-        self._load_tab(active_id)
+            return
+        self._load_tab(tab_id)
+
+    def _active_tab(self) -> str:
+        """Return the active tab id ('status', 'commits', …)."""
+        try:
+            cs: ContentSwitcher = self.query_one("#main-content", ContentSwitcher)
+            current = cs.current or "pane-status"
+            return current.removeprefix("pane-")
+        except Exception:
+            return "status"
 
     # ── Tab dispatch ─────────────────────────────────────────────────
 
@@ -769,7 +775,7 @@ class MainPanel(Widget):
         if not method_name:
             return
         method = getattr(self, method_name)
-        if tab_id == "tab-status":
+        if tab_id == "status":
             method(self._current_repo, self._current_info)
         else:
             method(self._current_repo)
@@ -778,11 +784,6 @@ class MainPanel(Widget):
     def _reload_tab(self, tab_id: str) -> None:
         self._loaded_tabs.discard(tab_id)
         self._load_tab(tab_id)
-
-    def on_tabbed_content_tab_activated(
-        self, event: TabbedContent.TabActivated
-    ) -> None:
-        self._load_tab(str(event.pane.id) if event.pane else "")
 
     # ── Tab loaders ──────────────────────────────────────────────────
 
@@ -1075,54 +1076,45 @@ class MainPanel(Widget):
         diff_text = get_commit_diff(self._current_repo, short_hash)
         self.app.push_screen(CommitDiffModal(short_hash, commit_msg, diff_text))
 
-    # ── Key action helpers ────────────────────────────────────────────
-
-    def _active_tab(self) -> str:
-        try:
-            tc: TabbedContent = self.query_one(TabbedContent)
-            return str(tc.active) if tc.active else ""
-        except Exception:
-            return ""
-
     # ── Actions ──────────────────────────────────────────────────────
 
     def action_stage_file(self) -> None:
-        if self._current_repo is None or self._active_tab() != "tab-status":
+        if self._current_repo is None or self._active_tab() != "status":
             return
         fl: ListView = self.query_one("#status-file-list", ListView)
         item = fl.highlighted_child
         if isinstance(item, StatusFileItem) and item.file_status in ("unstaged", "untracked"):
             msg = stage_files(self._current_repo, [item.filepath])
             self.app.notify(msg, timeout=2)
-            self._reload_tab("tab-status")
-            self._loaded_tabs.discard("tab-diff")
+            self._reload_tab("status")
+            self._loaded_tabs.discard("diff")
 
     def action_unstage_file(self) -> None:
-        if self._current_repo is None or self._active_tab() != "tab-status":
+        if self._current_repo is None or self._active_tab() != "status":
             return
         fl: ListView = self.query_one("#status-file-list", ListView)
         item = fl.highlighted_child
         if isinstance(item, StatusFileItem) and item.file_status == "staged":
             msg = unstage_files(self._current_repo, [item.filepath])
             self.app.notify(msg, timeout=2)
-            self._reload_tab("tab-status")
-            self._loaded_tabs.discard("tab-diff")
+            self._reload_tab("status")
+            self._loaded_tabs.discard("diff")
 
     def action_stage_all(self) -> None:
         if self._current_repo is None:
             return
         msg = stage_all(self._current_repo)
         self.app.notify(msg, timeout=2)
-        self._reload_tab("tab-status")
-        self._loaded_tabs.discard("tab-diff")
+        self._reload_tab("status")
+        self._loaded_tabs.discard("diff")
 
     def action_unstage_all(self) -> None:
         if self._current_repo is None:
             return
         msg = unstage_all(self._current_repo)
         self.app.notify(msg, timeout=2)
-        self._reload_tab("tab-status")
-        self._loaded_tabs.discard("tab-diff")
+        self._reload_tab("status")
+        self._loaded_tabs.discard("diff")
 
     def action_open_commit(self) -> None:
         if self._current_repo is None:
@@ -1135,10 +1127,10 @@ class MainPanel(Widget):
                 return
             result = commit_changes(self._current_repo, message)
             self.app.notify(result, timeout=4)
-            for tab in ("tab-status", "tab-commits", "tab-diff"):
+            for tab in ("status", "commits", "diff"):
                 self._loaded_tabs.discard(tab)
             current_tab = self._active_tab()
-            self._load_tab(current_tab or "tab-status")
+            self._load_tab(current_tab or "status")
             self.post_message(self.ReloadRequested())
 
         self.app.push_screen(CommitModal(staged_files=staged), _after_commit)
@@ -1152,8 +1144,8 @@ class MainPanel(Widget):
                 return
             result = create_branch(self._current_repo, name)
             self.app.notify(result, timeout=3)
-            self._reload_tab("tab-branches")
-            self._loaded_tabs.discard("tab-status")
+            self._reload_tab("branches")
+            self._loaded_tabs.discard("status")
             self.post_message(self.ReloadRequested())
 
         self.app.push_screen(NewBranchModal(), _after_create)
@@ -1169,7 +1161,7 @@ class MainPanel(Widget):
                 return
             result = stash_create(self._current_repo, message)
             self.app.notify(result, timeout=3)
-            self._reload_tab("tab-status")
+            self._reload_tab("status")
             self.post_message(self.ReloadRequested())
 
         self.app.push_screen(StashModal(), _after_stash)
@@ -1180,7 +1172,7 @@ class MainPanel(Widget):
             return
         result = stash_pop(self._current_repo)
         self.app.notify(result, timeout=3)
-        self._reload_tab("tab-status")
+        self._reload_tab("status")
         self.post_message(self.ReloadRequested())
 
     def action_fetch(self) -> None:
@@ -1227,10 +1219,10 @@ class MainPanel(Widget):
             op, result_msg = event.worker.result
             self.app.notify(result_msg, timeout=5)
             if op in ("pull", "fetch"):
-                for tab in ("tab-status", "tab-commits", "tab-remotes"):
+                for tab in ("status", "commits", "remotes"):
                     self._loaded_tabs.discard(tab)
             else:
-                self._loaded_tabs.discard("tab-remotes")
+                self._loaded_tabs.discard("remotes")
             self._load_tab(self._active_tab())
             self.post_message(self.ReloadRequested())
         elif event.state == WorkerState.ERROR:
@@ -1255,7 +1247,7 @@ class MainPanel(Widget):
             return
         result = delete_branch(self._current_repo, item.branch_info.name)
         self.app.notify(result, timeout=3)
-        self._reload_tab("tab-branches")
+        self._reload_tab("branches")
         self.post_message(self.ReloadRequested())
 
     # ── Events ───────────────────────────────────────────────────────
@@ -1297,18 +1289,18 @@ class MainPanel(Widget):
         """Route key presses depending on the active tab."""
         tab = self._active_tab()
         if event.key == "d":
-            if tab == "tab-branches":
+            if tab == "branches":
                 self._delete_selected_branch()
                 event.stop()
-            elif tab == "tab-commits":
+            elif tab == "commits":
                 self._open_commit_diff()
                 event.stop()
-        elif event.key == "f" and tab == "tab-remotes":
+        elif event.key == "f" and tab == "remotes":
             self.action_fetch()
             event.stop()
-        elif event.key == "p" and tab == "tab-remotes":
+        elif event.key == "p" and tab == "remotes":
             self.action_pull()
             event.stop()
-        elif event.key == "P" and tab == "tab-remotes":
+        elif event.key == "P" and tab == "remotes":
             self.action_push()
             event.stop()

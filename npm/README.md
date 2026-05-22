@@ -10,6 +10,19 @@ Installing via npm simply bootstraps an isolated Python environment and launches
 that package — there is no duplicated logic, and Python remains the single
 source of truth.
 
+## Why GitPulse?
+
+A lot of development happens late at night, and not everyone commits or pushes
+their changes right away. With "vibe coding" becoming so popular, many people
+now juggle several projects at once — and that makes it genuinely hard to keep
+track of every local repository.
+
+GitPulse exists to solve exactly that. It gives you a single dashboard for all
+your local repos, so at a glance you can see what's committed but not yet
+pushed, what's changed but not yet committed, the number of modified files, the
+current branch, the last commit, and everything else about the state of each
+local Git repository.
+
 ## Install
 
 ```bash

@@ -59,8 +59,8 @@ See [npm/README.md](./npm/README.md) for details and troubleshooting.
 If you prefer to install from source or want to contribute to the project:
 
 ```bash
-git clone https://github.com/lebiraja/git-tui.git
-cd git-tui
+git clone https://github.com/lebiraja/gitpulse.git
+cd gitpulse
 ./install.sh
 ```
 
@@ -78,41 +78,61 @@ source ~/.zshrc   # or source ~/.bashrc
 ## Usage
 
 ```bash
-gitpulse                          # scans current directory (or scan.roots from config)
-gitpulse --root /path/to/repos   # scans a custom directory
-gitpulse --root .                 # scans current directory explicitly
-gitpulse --commits 20            # show 20 commits per repo (default: 10)
-gitpulse --version               # print version
+gitpulse                           # scan the current directory (or scan.roots from config)
+gitpulse --root /path/to/repos     # scan a custom directory
+gitpulse --commits 20              # show 20 commits per repo (default: 10)
+gitpulse --no-watch                # disable live watch mode
+gitpulse --config path/to.toml     # use a custom config file
+gitpulse --version                 # print version
+
+# Activity digest (prints markdown, no TUI):
+gitpulse --digest --since 7d                 # last 7 days
+gitpulse --digest --since 2024-01-01         # since a date
+gitpulse --digest --author you@example.com   # filter by author
 ```
 
 ## Features
 
-- **Sorted by Activity** — Repos ordered by most recent commit date
-- **Status Badges** — Color-coded with file counts: 🟢 CLEAN / 🟡 MODIFIED (3) / 🔴 UNTRACKED (2)
-- **Activity Sparkline** — 7-week commit frequency bar (`▁▂▃▅▇`) next to each repo
-- **Relative Time** — "2h ago", "3d ago" shown next to each repo
-- **Search/Filter** — Press `/` to filter repos by name instantly
-- **Non-blocking scan** — Background worker keeps the UI responsive while scanning
-- **Tabbed Main Panel**:
-  - **📋 Status** — Styled repo summary panel, staged/unstaged/untracked files with icons, stash list
-  - **📝 Commits** — Last N commits with color-coded `+green` / `-red` diff stats
-  - **🔀 Diff** — Syntax-highlighted uncommitted changes with line count footer
-  - **🌿 Branches** — All local branches, press Enter to switch
-  - **🌐 Remotes** — Remote URLs with ahead/behind sync status
-  - **🏷️ Tags** — Recent tags with date and tagger info
-  - **🌲 Tree** — Visual file hierarchy of all tracked files
+- **Multi-repo dashboard** — Scans a directory tree and lists every local Git repo, sorted by most recent activity
+- **Compact fleet sidebar** — Each repo as a single row: name, branch, change count, and status (`✓ Clean` / `● Modified` / `● Untracked`)
+- **Fleet status strip** — Cross-repo counters (dirty, behind, ahead, stashes, stale branches); click one to filter the list
+- **Live watch mode** — Polls the filesystem and auto-refreshes repos as they change, without blocking the UI
+- **Search & filter** — Press `/` to filter repos by name instantly
+- **Multi-select & bulk actions** — Select repos with `Space`, then run `fetch` / `pull` / `push` / `gc` / `prune` / `clean` across all of them from the command palette (`:`)
+- **Activity digest** — A markdown standup summary of your commits across all repos for a time window (`d`, or `--digest` on the CLI)
+- **Stale-branch cleanup** — Find and bulk-delete merged / WIP / old branches across every repo (`b`)
+- **Seven content tabs**:
+  - **Status** — Summary cards (branch, commits, status, stashes, ahead/behind), a staged/unstaged/untracked/stash workspace, and file-tree / recent-commits / remote-summary side panels. Stage, unstage, commit and stash inline.
+  - **Commits** — ASCII commit graph + last N commits with color-coded `+green` / `-red` diff stats
+  - **Diff** — Per-file picker with syntax-highlighted staged & unstaged changes
+  - **Branches** — All local branches; switch, create, or delete
+  - **Remotes** — Remote URLs with ahead/behind sync status; fetch / pull / push
+  - **Tags** — Recent tags with date and tagger info
+  - **Tree** — File hierarchy of all tracked files, with file preview
 
 ## Keybindings
 
+Press `?` inside the app for the full cheat sheet.
+
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate repo list |
-| `/` | Focus search/filter |
-| `Escape` | Clear search |
-| `Tab` / `Shift+Tab` | Next/previous focus area |
-| `Enter` | Switch branch (Branches tab) |
-| `r` | Refresh / rescan all repos |
+| `↑` / `↓` | Navigate the repo list |
+| `[` / `]` | Previous / next tab |
+| `/` | Search / filter repos |
+| `Space` / `*` | Toggle multi-select / select all |
+| `r` | Refresh — rescan all repos |
+| `w` | Toggle watch mode |
+| `d` | Activity digest |
+| `:` | Bulk action palette |
+| `b` | Stale-branch cleanup |
+| `?` | Help |
 | `q` | Quit |
+| `s` / `u` / `a` | Stage / unstage / stage-all (Status tab) |
+| `c` | Commit staged changes |
+| `n` | New branch |
+| `z` / `Z` | Create / pop stash |
+| `Enter` | Switch branch · view commit diff · preview file |
+| `f` / `p` / `P` | Fetch / pull / push (Remotes tab) |
 
 ## Requirements
 

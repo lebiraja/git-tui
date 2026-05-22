@@ -1,13 +1,27 @@
 /* ===================================================================
-   GitPulse — Textual CSS Styles
-   "Crimson Void" dark red cyberpunk theme.
-   Primary accent: #ff2d4a  |  Backgrounds: near-black charcoals
+   GitPulse — Textual CSS
+   Minimal dark dashboard theme.
+
+   Palette tokens:
+     background #0b0f14   panel #111827   border #1f2937
+     text       #d1d5db   muted #6b7280   accent #8b5cf6
+     green      #22c55e   yellow #f59e0b  red    #ef4444
    =================================================================== */
 
 /* ---------- Global ---------- */
 Screen {
-    background: #0a0a0f;
-    color: #d4d4dc;
+    background: #0b0f14;
+    color: #d1d5db;
+}
+
+* {
+    scrollbar-size: 1 1;
+    scrollbar-color: #1f2937;
+    scrollbar-color-hover: #8b5cf6;
+    scrollbar-color-active: #8b5cf6;
+    scrollbar-background: #0b0f14;
+    scrollbar-background-hover: #0b0f14;
+    scrollbar-background-active: #0b0f14;
 }
 
 /* ---------- Layout ---------- */
@@ -17,166 +31,216 @@ Screen {
 }
 
 #sidebar-column {
-    width: 46;
-    min-width: 32;
-    max-width: 58;
-    background: #12121a;
-    border-right: vkey #2a2a3a;
+    width: 38;
+    min-width: 30;
+    max-width: 48;
+    background: #111827;
+    border-right: solid #1f2937;
 }
 
 #sidebar-container {
     width: 100%;
     height: 1fr;
-    background: #12121a;
+    background: #111827;
 }
 
 #main-panel {
     width: 1fr;
-    background: #0a0a0f;
+    background: #0b0f14;
+}
+
+/* ---------- App header ---------- */
+AppHeader {
+    dock: top;
+    height: 1;
+    background: #111827;
+    border-bottom: solid #1f2937;
+    layout: horizontal;
+}
+
+#header-logo {
+    width: auto;
+    padding: 0 2;
+    color: #d1d5db;
+}
+
+#header-tabs {
+    width: 1fr;
+    layout: horizontal;
+    align: center middle;
+}
+
+HeaderTab {
+    width: auto;
+    height: 1;
+    padding: 0 2;
+    color: #6b7280;
+}
+
+HeaderTab:hover {
+    color: #d1d5db;
+}
+
+HeaderTab.-active {
+    color: #8b5cf6;
+    text-style: bold;
+}
+
+#header-actions {
+    width: auto;
+    padding: 0 2;
+    color: #6b7280;
 }
 
 /* ---------- Sidebar ---------- */
 #sidebar-title {
     dock: top;
     width: 100%;
-    height: 3;
-    content-align: center middle;
+    height: 1;
+    content-align: left middle;
     text-style: bold;
-    color: #ff2d4a;
-    background: #1a1a24;
-    border-bottom: heavy #2a2a3a;
+    color: #d1d5db;
+    background: #111827;
     padding: 0 1;
 }
 
-/* Search input */
 #search-input {
     dock: top;
     width: 100%;
     height: 3;
     margin: 0;
     padding: 0 1;
-    background: #1a1a24;
-    color: #d4d4dc;
-    border-bottom: solid #2a2a3a;
+    background: #0b0f14;
+    color: #d1d5db;
+    border: solid #1f2937;
 }
 
 #search-input:focus {
-    border-bottom: solid #ff2d4a;
+    border: solid #8b5cf6;
 }
 
-/* General input focus styling */
 Input:focus {
-    border: tall #ff2d4a;
+    border: solid #8b5cf6;
 }
 
-Input.-valid:focus {
-    border: tall #3ddc84;
+#repo-list-header {
+    dock: top;
+    width: 100%;
+    height: 1;
+    background: #0b0f14;
+    color: #6b7280;
+    padding: 0 1;
 }
 
 #repo-list {
-    background: #12121a;
-    scrollbar-color: #2a2a3a;
-    scrollbar-color-hover: #ff2d4a;
-    scrollbar-color-active: #ff2d4a;
+    background: #111827;
 }
 
-/* List item styling */
 RepoListItem {
-    background: #12121a;
-    padding: 0 0 0 1;
-    margin: 0;
-    border-bottom: solid #1e1e28;
+    height: auto;
+    background: #111827;
+    padding: 0 1;
 }
 
 RepoListItem:hover {
-    background: #242430;
+    background: #1f2937;
 }
 
 #repo-list:focus > RepoListItem.--highlight {
-    background: #2d1520;
+    background: #1f2937;
 }
 
-/* ---------- Main Panel / Tabs ---------- */
+/* ---------- Main panel / content switcher ---------- */
+#main-content {
+    width: 1fr;
+    height: 1fr;
+    background: #0b0f14;
+}
+
 TabbedContent {
-    background: #0a0a0f;
+    background: #0b0f14;
     height: 1fr;
 }
 
 ContentSwitcher {
-    background: #0a0a0f;
+    background: #0b0f14;
     height: 1fr;
 }
 
 TabPane {
-    background: #0a0a0f;
+    background: #0b0f14;
     padding: 1 2;
     height: 1fr;
 }
 
 Tabs {
-    background: #1a1a24;
+    background: #111827;
     dock: top;
-    height: 3;
+    height: 1;
 }
 
 Tab {
-    color: #555568;
-    background: #1a1a24;
+    color: #6b7280;
+    background: #111827;
     padding: 0 2;
-    margin: 0 0;
 }
 
 Tab:hover {
-    color: #d4d4dc;
-    background: #242430;
+    color: #d1d5db;
 }
 
 Tab.-active {
-    color: #ff2d4a;
-    background: #0a0a0f;
+    color: #8b5cf6;
+    background: #0b0f14;
     text-style: bold;
 }
 
-Underline {
-    color: #ff2d4a;
+Underline > .underline--bar {
+    color: #8b5cf6;
 }
 
-/* ---------- DataTable (Commits, Tags) ---------- */
+/* ---------- DataTable ---------- */
 DataTable {
-    background: #0a0a0f;
+    background: #0b0f14;
     height: 1fr;
 }
 
 DataTable > .datatable--header {
-    background: #1a1a24;
-    color: #ff2d4a;
+    background: #111827;
+    color: #6b7280;
     text-style: bold;
 }
 
 DataTable > .datatable--cursor {
-    background: #2d1520;
-    color: #d4d4dc;
+    background: #1f2937;
+    color: #d1d5db;
 }
 
 DataTable > .datatable--even-row {
-    background: #0a0a0f;
+    background: #0b0f14;
 }
 
 DataTable > .datatable--odd-row {
-    background: #12121a;
+    background: #111827;
 }
 
-/* ---------- Status / Diff / Remotes panels ---------- */
+/* ---------- Status / panels ---------- */
 #status-summary {
     height: auto;
-    background: #0a0a0f;
+    background: #0b0f14;
     padding: 0 1;
 }
 
 #status-file-list {
     height: 1fr;
-    background: #0a0a0f;
-    scrollbar-color: #2a2a3a;
+    background: #0b0f14;
+}
+
+.panel {
+    background: #111827;
+    border: solid #1f2937;
+    border-title-color: #6b7280;
+    border-title-align: left;
 }
 
 #status-hints,
@@ -187,95 +251,146 @@ DataTable > .datatable--odd-row {
 #tree-hints {
     height: 1;
     dock: bottom;
-    background: #1a1a24;
-    color: #555568;
+    background: #111827;
+    color: #6b7280;
     padding: 0 1;
-    border-top: solid #2a2a3a;
+    border-top: solid #1f2937;
 }
 
 StatusFileItem {
     height: 1;
     padding: 0 1;
-    background: #0a0a0f;
-    border-bottom: solid #12121a;
+    background: #0b0f14;
 }
 
 StatusFileItem:hover {
-    background: #242430;
+    background: #1f2937;
 }
 
 #status-file-list:focus > StatusFileItem.--highlight {
-    background: #2d1520;
+    background: #1f2937;
 }
 
-/* ---------- Diff tab layout ---------- */
+/* ---------- Status pane (redesigned) ---------- */
+#repo-header {
+    height: 1;
+    background: #0b0f14;
+    color: #d1d5db;
+    padding: 0 1;
+}
+
+SummaryCards {
+    height: 4;
+    layout: horizontal;
+    background: #0b0f14;
+}
+
+SummaryCard {
+    width: 1fr;
+    height: 4;
+    background: #111827;
+    border: solid #1f2937;
+    border-title-color: #6b7280;
+    border-title-align: left;
+    padding: 0 1;
+    margin: 0 1 0 0;
+}
+
+#status-body {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#status-workspace {
+    width: 1fr;
+    height: 1fr;
+}
+
+#status-rightbar {
+    width: 34;
+    min-width: 26;
+    height: 1fr;
+    layout: vertical;
+}
+
+#status-rightbar > .panel {
+    height: 1fr;
+    margin: 0 0 1 0;
+}
+
+.empty-state {
+    width: 100%;
+    height: 100%;
+    content-align: center middle;
+    color: #6b7280;
+}
+
+/* ---------- Diff tab ---------- */
 #diff-layout {
     height: 1fr;
     layout: horizontal;
 }
 
 #diff-file-panel {
-    width: 30;
-    min-width: 22;
-    background: #12121a;
-    border-right: vkey #2a2a3a;
+    width: 28;
+    min-width: 20;
+    background: #111827;
+    border-right: solid #1f2937;
 }
 
 #diff-file-header {
     height: 1;
-    background: #1a1a24;
+    background: #111827;
     padding: 0 1;
-    color: #ff2d4a;
+    color: #6b7280;
     text-style: bold;
 }
 
 #diff-file-list {
     height: 1fr;
-    background: #12121a;
-    scrollbar-color: #2a2a3a;
+    background: #111827;
 }
 
 DiffFileItem {
     height: 1;
     padding: 0 1;
-    background: #12121a;
+    background: #111827;
 }
 
 DiffFileItem:hover {
-    background: #242430;
+    background: #1f2937;
 }
 
 #diff-file-list:focus > DiffFileItem.--highlight {
-    background: #2d1520;
+    background: #1f2937;
 }
 
 #diff-view-panel {
     width: 1fr;
-    background: #0a0a0f;
+    background: #0b0f14;
     padding: 0 1;
     overflow-y: auto;
     overflow-x: auto;
 }
 
 #diff-content {
-    background: #0a0a0f;
+    background: #0b0f14;
     height: auto;
 }
 
-/* ---------- Remotes + Tree panels ---------- */
+/* ---------- Remotes + Tree ---------- */
 #remotes-scroll {
     width: 100%;
     height: 1fr;
-    background: #0a0a0f;
+    background: #0b0f14;
     padding: 1 1;
 }
 
 #remotes-content {
-    background: #0a0a0f;
+    background: #0b0f14;
     height: auto;
 }
 
-/* ---------- Commit graph ---------- */
 #commits-layout {
     height: 1fr;
     layout: vertical;
@@ -283,9 +398,9 @@ DiffFileItem:hover {
 
 #commits-graph-scroll {
     width: 100%;
-    height: 12;
-    background: #12121a;
-    border: solid #2a2a3a;
+    height: 10;
+    background: #111827;
+    border: solid #1f2937;
     padding: 0 1;
     overflow-x: auto;
     overflow-y: auto;
@@ -293,167 +408,140 @@ DiffFileItem:hover {
 
 #commits-graph {
     height: auto;
-    background: #12121a;
+    background: #111827;
 }
 
-/* ---------- Interactive file tree ---------- */
 #tree-widget {
     width: 100%;
     height: 1fr;
-    background: #0a0a0f;
+    background: #0b0f14;
     padding: 0 1;
 }
 
 Tree > .tree--guides {
-    color: #2a2a3a;
+    color: #1f2937;
 }
 
 Tree > .tree--guides-hover {
-    color: #ff2d4a;
+    color: #8b5cf6;
 }
 
 Tree > .tree--guides-selected {
-    color: #e040fb;
+    color: #8b5cf6;
 }
 
 Tree > .tree--cursor {
-    background: #2d1520;
-    color: #d4d4dc;
-    text-style: bold;
+    background: #1f2937;
+    color: #d1d5db;
 }
 
 Tree > .tree--highlight {
-    background: #242430;
-}
-
-Tree > .tree--highlight-line {
-    color: #555568;
+    background: #1f2937;
 }
 
 /* ---------- Branch list ---------- */
 #branch-list {
-    background: #0a0a0f;
+    background: #0b0f14;
     height: 1fr;
-    scrollbar-color: #2a2a3a;
-    scrollbar-color-hover: #ff2d4a;
-    scrollbar-color-active: #e040fb;
 }
 
 BranchListItem {
-    height: auto;
+    height: 1;
     padding: 0 1;
-    background: #0a0a0f;
-    border-bottom: solid #1e1e28;
+    background: #0b0f14;
 }
 
 BranchListItem:hover {
-    background: #242430;
+    background: #1f2937;
 }
 
 #branch-list:focus > BranchListItem.--highlight {
-    background: #2d1520;
-}
-
-/* Branch list zebra-striping for better scanability */
-BranchListItem:even {
-    background: #0a0a0f;
-}
-
-BranchListItem:odd {
-    background: #12121a;
+    background: #1f2937;
 }
 
 /* ---------- Footer ---------- */
 Footer {
-    background: #1a1a24;
-    color: #555568;
+    background: #111827;
+    color: #6b7280;
 }
 
 Footer > .footer--key {
-    color: #ff2d4a;
+    color: #8b5cf6;
     text-style: bold;
-    background: #2d1520;
+    background: #111827;
 }
 
 Footer > .footer--description {
-    color: #8888a0;
+    color: #6b7280;
 }
 
 /* ---------- Buttons ---------- */
+Button {
+    background: #1f2937;
+    color: #d1d5db;
+}
+
 Button:focus {
-    text-style: bold reverse;
-}
-
-Button.-primary:focus {
-    border: tall #ff2d4a;
-}
-
-Button.-success:focus {
-    border: tall #3ddc84;
-}
-
-Button.-warning:focus {
-    border: tall #ffb74d;
-}
-
-/* ---------- Header ---------- */
-Header {
-    background: #1a1a24;
-    color: #ff2d4a;
-    dock: top;
-    height: 1;
-}
-
-HeaderTitle {
-    color: #ff2d4a;
     text-style: bold;
 }
 
-/* ---------- Empty state ---------- */
-.empty-message {
-    color: #555568;
-    text-style: italic;
-    padding: 2;
-    content-align: center middle;
-    width: 100%;
-    height: 100%;
+Button.-primary {
+    background: #8b5cf6;
+    color: #0b0f14;
 }
 
-/* ---------- Scroll bars ---------- */
-* {
-    scrollbar-size: 1 1;
-    scrollbar-color: #2a2a3a;
-    scrollbar-color-hover: #ff2d4a;
-    scrollbar-color-active: #ff2d4a;
-    scrollbar-background: #0a0a0f;
-    scrollbar-background-hover: #0a0a0f;
-    scrollbar-background-active: #0a0a0f;
+Button.-success {
+    background: #22c55e;
+    color: #0b0f14;
 }
 
-/* ---------- Fleet status bar ---------- */
+Button.-warning {
+    background: #f59e0b;
+    color: #0b0f14;
+}
+
+Button.-error {
+    background: #ef4444;
+    color: #0b0f14;
+}
+
+/* ---------- Fleet status strip ---------- */
 FleetStatus {
-    height: 3;
-    background: #1a1a24;
-    border-bottom: heavy #2a2a3a;
+    height: 1;
+    background: #111827;
     layout: horizontal;
     align: left middle;
     padding: 0 1;
+}
+
+FleetStatus > Static#fleet-label {
+    width: auto;
+    color: #6b7280;
+    margin-right: 1;
 }
 
 FleetChip {
     width: auto;
     height: 1;
     padding: 0 1;
-    margin: 0 1;
-    content-align: center middle;
+    color: #6b7280;
 }
 
 FleetChip:hover {
-    background: #2d1520;
+    color: #d1d5db;
 }
 
 FleetChip.-active-filter {
-    background: #2d1520;
-    color: #ff2d4a;
+    color: #8b5cf6;
     text-style: bold;
+}
+
+/* ---------- Empty message ---------- */
+.empty-message {
+    color: #6b7280;
+    text-style: italic;
+    padding: 2;
+    content-align: center middle;
+    width: 100%;
+    height: 100%;
 }

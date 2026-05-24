@@ -200,8 +200,13 @@ class RepoSidebar(Static):
             text += f"  ·  {sel} selected"
         title.update(text)
 
-    def populate(self, repos: list[RepoInfo]) -> None:
-        """Clear and re-populate the repo list."""
+    def populate(self, repos: list[RepoInfo], keep_path=None) -> None:
+        """Clear and re-populate the repo list.
+
+        If ``keep_path`` is given and present in ``repos``, the highlight is
+        restored to that row (preserving the user's selection across rescans);
+        otherwise the first row is highlighted.
+        """
         self._current_repos = list(repos)
         list_view: ListView = self.query_one("#repo-list", ListView)
         list_view.clear()
@@ -213,10 +218,22 @@ class RepoSidebar(Static):
             )))
             return
 
-        for info in repos:
+        target_index = 0
+        for i, info in enumerate(repos):
             list_view.append(RepoListItem(info, selected=info.path in self._selected))
+            if keep_path is not None and info.path == keep_path:
+                target_index = i
 
-        list_view.index = 0
+        list_view.index = target_index
+
+    def set_active(self, path) -> None:
+        """Move the highlight to the row with the given path (no-op if absent)."""
+        list_view: ListView = self.query_one("#repo-list", ListView)
+        for i, r in enumerate(self._current_repos):
+            if r.path == path:
+                if list_view.index != i:
+                    list_view.index = i
+                return
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Forward the highlight event as a RepoSelected message."""

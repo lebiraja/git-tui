@@ -24,7 +24,10 @@ from textual.worker import Worker, WorkerState
 # direct execution (python main.py) by trying package import first.
 try:
     from gitpulse.scanner import scan_repos
-    from gitpulse.git_ops import get_repo_info, switch_branch, RepoInfo
+    from gitpulse.git_ops import (
+        get_repo_info, switch_branch, is_dirty, classify_error,
+        stash_create, RepoInfo,
+    )
     from gitpulse.ui.sidebar import RepoSidebar
     from gitpulse.ui.tabs import MainPanel
     from gitpulse.ui.header import AppHeader, TAB_IDS
@@ -34,6 +37,7 @@ try:
     from gitpulse.ui.command_palette import CommandPaletteModal
     from gitpulse.ui.bulk_results import BulkResultsScreen
     from gitpulse.ui.stale_screen import StaleScreen
+    from gitpulse.ui.confirm_modal import ConfirmModal, DirtyTreeModal
     from gitpulse.utils import __version__, parse_since
     from gitpulse import config as _config
     from gitpulse import watcher as _watcher
@@ -43,7 +47,10 @@ except ImportError:
     if str(_THIS_DIR) not in sys.path:
         sys.path.insert(0, str(_THIS_DIR))
     from scanner import scan_repos  # type: ignore[no-redef]
-    from git_ops import get_repo_info, switch_branch, RepoInfo  # type: ignore[no-redef]
+    from git_ops import (  # type: ignore[no-redef]
+        get_repo_info, switch_branch, is_dirty, classify_error,
+        stash_create, RepoInfo,
+    )
     from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
     from ui.tabs import MainPanel  # type: ignore[no-redef]
     from ui.header import AppHeader, TAB_IDS  # type: ignore[no-redef]
@@ -53,6 +60,7 @@ except ImportError:
     from ui.command_palette import CommandPaletteModal  # type: ignore[no-redef]
     from ui.bulk_results import BulkResultsScreen  # type: ignore[no-redef]
     from ui.stale_screen import StaleScreen  # type: ignore[no-redef]
+    from ui.confirm_modal import ConfirmModal, DirtyTreeModal  # type: ignore[no-redef]
     from utils import __version__, parse_since  # type: ignore[no-redef]
     import config as _config  # type: ignore[no-redef]
     import watcher as _watcher  # type: ignore[no-redef]
@@ -79,6 +87,7 @@ class GitPulseApp(App):
         Binding("d", "open_digest", "Digest", show=True),
         Binding("colon", "open_palette", "Actions", show=True),
         Binding("b", "open_stale", "Stale", show=True),
+        Binding("P", "push_all", "Push all", show=True),
         Binding("slash", "search", "Search", show=True),
         Binding("escape", "clear_search", "Clear", show=False),
         Binding("tab", "focus_next", "Next", show=False),
@@ -106,6 +115,8 @@ class GitPulseApp(App):
         self._watch_paused = False      # Toggled by 'w' key
         self._signatures: dict = {}     # path → (HEAD mtime, index mtime, refs mtime, packed-refs mtime)
         self._fleet_category: str = ""  # Active fleet-filter category ("" = none)
+        self._error_log: list[str] = []  # Ring buffer of raw error details (cap 50)
+        self._bulk_in_flight: int = 0    # Count of active bulk/git workers (for indicator)
 
     # -----------------------------------------------------------------
     # Layout
@@ -191,13 +202,23 @@ class GitPulseApp(App):
                 self.notify("No repos to act on", timeout=2)
                 return
 
-            # Push needs extra confirmation
-            if action_key == "push":
+            destructive = action_key in ("push", "pull", "gc", "clean", "prune")
+            if destructive:
                 names = ", ".join(r.name for r in target_repos[:5])
                 extra = f" +{len(target_repos) - 5} more" if len(target_repos) > 5 else ""
-                self.notify(f"Pushing to: {names}{extra}", timeout=4)
-
-            self._dispatch_bulk(action_key, target_repos)
+                async def _after_confirm(ok: bool | None) -> None:
+                    if ok:
+                        self._dispatch_bulk(action_key, target_repos)
+                self.push_screen(
+                    ConfirmModal(
+                        title=f"Run '{action_key}' on {len(target_repos)} repo(s)?",
+                        body=f"[bold #8b5cf6]{names}[/]{extra}",
+                        danger=action_key in ("push", "clean"),
+                    ),
+                    _after_confirm,
+                )
+            else:
+                self._dispatch_bulk(action_key, target_repos)
 
         self.push_screen(CommandPaletteModal(selected_count=sel_count), _after_palette)
 
@@ -237,7 +258,19 @@ class GitPulseApp(App):
             if action_key in ("pull", "refresh"):
                 self.call_from_thread(self._start_scan)
 
+        self._bulk_in_flight += 1
+        self._update_busy_indicator()
         self.run_worker(_worker, thread=True, group="bulk", exclusive=False)
+
+    def _update_busy_indicator(self) -> None:
+        """Reflect active workers in the sub-title so the user has feedback."""
+        watch_part = "watch: ● live" if (self._watch_enabled and not self._watch_paused) else (
+            "watch: ○ paused" if self._watch_enabled else "watch: off"
+        )
+        if self._bulk_in_flight > 0:
+            self.sub_title = f"⚙ working ({self._bulk_in_flight})  ·  {watch_part}"
+        else:
+            self.sub_title = watch_part
 
     def action_toggle_watch(self) -> None:
         """Pause / resume watch mode (bound to 'w')."""
@@ -285,6 +318,26 @@ class GitPulseApp(App):
         """User clicked a tab in the header."""
         self._switch_tab(message.tab_id)
 
+    def action_push_all(self) -> None:
+        """Shift+P — push every repo currently visible in the sidebar (after confirm)."""
+        targets = list(self.repos) if self.repos else list(self._all_repos)
+        if not targets:
+            self.notify("No repos to push", timeout=2)
+            return
+        names = ", ".join(r.name for r in targets[:5])
+        extra = f" +{len(targets) - 5} more" if len(targets) > 5 else ""
+        async def _after(ok: bool | None) -> None:
+            if ok:
+                self._dispatch_bulk("push", targets)
+        self.push_screen(
+            ConfirmModal(
+                title=f"Push {len(targets)} repo(s)?",
+                body=f"[bold #8b5cf6]{names}[/]{extra}",
+                danger=True,
+            ),
+            _after,
+        )
+
     def action_open_help(self) -> None:
         """Show the keyboard-shortcut cheat sheet (bound to '?')."""
         self.push_screen(HelpModal())
@@ -322,8 +375,12 @@ class GitPulseApp(App):
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Called on the main thread when the worker finishes."""
+        group = getattr(event.worker, "group", None)
+        if event.state in (WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED):
+            if group == "bulk" and self._bulk_in_flight > 0:
+                self._bulk_in_flight -= 1
+                self._update_busy_indicator()
         if event.state == WorkerState.SUCCESS and event.worker.result is not None:
-            group = getattr(event.worker, "group", None)
 
             if group == "watch":
                 # Single-repo refresh from watch tick
@@ -336,7 +393,6 @@ class GitPulseApp(App):
                 switch_msg, updated_info = event.worker.result
                 self.notify(switch_msg, timeout=3)
                 self._refresh_single_repo(updated_info)
-                self._start_scan()
                 return
 
             if group not in (None, "scan"):
@@ -352,20 +408,44 @@ class GitPulseApp(App):
             # Snapshot signatures for watch mode
             self._signatures = _watcher.snapshot(infos)
 
+            # Determine which repo to keep highlighted across the rescan.
+            keep_path = self._selected_repo.path if self._selected_repo else None
+            keep = None
+            if keep_path is not None:
+                for r in self.repos:
+                    if r.path == keep_path:
+                        keep = r
+                        break
+
             sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
             live = self._watch_enabled and not self._watch_paused
             sidebar.update_header(scanning=False, count=len(infos), live=live)
-            sidebar.populate(self.repos)
+            sidebar.populate(self.repos, keep_path=keep.path if keep else None)
 
             fleet: FleetStatus = self.query_one("#fleet-status", FleetStatus)
             fleet.update_counters(infos)
 
-            if self.repos:
+            if keep is not None:
+                # Refresh in-memory ref + subtitle without forcing a full tab
+                # reload (the user's tabs already have current data).
+                self._selected_repo = keep
+                self.sub_title = f"{keep.name}  ·  {keep.branch}"
+            elif self.repos:
                 self._select_repo(self.repos[0])
 
         elif event.state == WorkerState.ERROR:
             self._scanning = False
-            self.notify(f"Scan failed: {event.worker.error}", severity="error", timeout=5)
+            hint, detail = classify_error(event.worker.error)
+            self.notify(f"Scan failed: {hint}", severity="error", timeout=6)
+            self._record_error(detail)
+
+    def _record_error(self, detail: str) -> None:
+        """Append a raw error detail to the in-app ring buffer (cap 50)."""
+        if not detail:
+            return
+        self._error_log.append(detail)
+        if len(self._error_log) > 50:
+            del self._error_log[0 : len(self._error_log) - 50]
 
     def _tick_watch(self) -> None:
         """Called on a timer interval — check for changed repos and re-enrich them."""
@@ -486,25 +566,67 @@ class GitPulseApp(App):
     def on_main_panel_branch_switch_requested(
         self, message: MainPanel.BranchSwitchRequested
     ) -> None:
-        """User pressed Enter on a branch in the Branches tab."""
+        """User pressed Enter on a branch — confirm always; warn if dirty."""
         if self._selected_repo is None:
             return
 
         path = self._selected_repo.path
+        repo_name = self._selected_repo.name
         branch_name = message.branch_name
+        current_branch = self._selected_repo.branch
+        if branch_name == current_branch:
+            self.notify(f"Already on '{branch_name}'", timeout=2)
+            return
 
-        def _do_switch() -> tuple[str, RepoInfo]:
-            msg = switch_branch(path, branch_name)
-            info = get_repo_info(path)
-            return msg, info
+        def _run_switch(stash_first: bool = False) -> None:
+            def _worker() -> tuple[str, RepoInfo]:
+                pre = ""
+                if stash_first:
+                    pre = stash_create(path, f"gitpulse auto-stash before switch to {branch_name}") + "\n"
+                msg = pre + switch_branch(path, branch_name)
+                info = get_repo_info(path)
+                return msg, info
+            self.run_worker(_worker, thread=True, group="branch_switch", exclusive=False)
 
-        self.run_worker(_do_switch, thread=True, group="branch_switch", exclusive=False)
+        dirty, summary = is_dirty(path)
+        if dirty:
+            async def _after_dirty(choice) -> None:
+                if choice == "stash":
+                    _run_switch(stash_first=True)
+                elif choice == "force":
+                    _run_switch(stash_first=False)
+            self.push_screen(
+                DirtyTreeModal(repo_name=repo_name, dirty_summary=summary, target_branch=branch_name),
+                _after_dirty,
+            )
+        else:
+            async def _after_confirm(ok: bool | None) -> None:
+                if ok:
+                    _run_switch(stash_first=False)
+            self.push_screen(
+                ConfirmModal(
+                    title=f"Switch to '{branch_name}'?",
+                    body=f"Checkout [bold #8b5cf6]{branch_name}[/] in {repo_name}?",
+                ),
+                _after_confirm,
+            )
 
     def on_main_panel_reload_requested(self, message: MainPanel.ReloadRequested) -> None:
-        """Fired after a commit or branch operation — rescan to update sidebar."""
+        """Fired after a commit / stash / branch op.
+
+        Just re-enrich the active repo in the background and patch the sidebar;
+        do NOT trigger a full filesystem rescan (that's what was wiping the
+        user's tab state and selection).
+        """
         if self._selected_repo is None:
             return
-        self._start_scan()
+        path = self._selected_repo.path
+        self.run_worker(
+            lambda p=path: get_repo_info(p),
+            thread=True,
+            group="watch",
+            exclusive=False,
+        )
 
 
 # -----------------------------------------------------------------------

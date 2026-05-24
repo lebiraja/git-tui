@@ -9,7 +9,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable, ProgressBar, Static
 from textual.containers import Container
 
 try:
@@ -41,9 +41,18 @@ class BulkResultsScreen(ModalScreen):
         text-style: bold;
         padding: 0 1;
     }
+    #results-progress {
+        dock: top;
+        offset: 0 1;
+        height: 1;
+        width: 100%;
+        padding: 0 1;
+        background: #0b0f14;
+    }
     #results-table {
         width: 100%;
         height: 1fr;
+        margin-top: 1;
     }
     #results-footer {
         dock: bottom;
@@ -67,6 +76,11 @@ class BulkResultsScreen(ModalScreen):
                 f" Bulk: {self._action}",
                 id="results-title",
                 markup=False,
+            )
+            yield ProgressBar(
+                total=max(self._total, 1),
+                show_eta=False,
+                id="results-progress",
             )
             yield DataTable(id="results-table")
             yield Static(
@@ -97,6 +111,11 @@ class BulkResultsScreen(ModalScreen):
             output = (str(result) if result else "done")[:80]
 
         table.add_row(repo.name, status, output)
+
+        try:
+            self.query_one("#results-progress", ProgressBar).advance(1)
+        except Exception:
+            pass
 
         footer: Static = self.query_one("#results-footer", Static)
         done = self._completed == self._total

@@ -50,10 +50,12 @@ try:
         git_fetch, git_pull, git_push,
         stash_create, stash_pop,
         get_commit_graph, get_file_contents, get_tracked_files,
+        is_dirty, classify_error,
         BranchInfo, RepoInfo,
     )
     from gitpulse.utils import relative_time
     from gitpulse.ui.summary_cards import SummaryCards
+    from gitpulse.ui.confirm_modal import ConfirmModal, TypedConfirmModal
 except ImportError:
     from git_ops import (  # type: ignore[no-redef]
         get_status, get_commits, get_branches,
@@ -64,10 +66,25 @@ except ImportError:
         git_fetch, git_pull, git_push,
         stash_create, stash_pop,
         get_commit_graph, get_file_contents, get_tracked_files,
+        is_dirty, classify_error,
         BranchInfo, RepoInfo,
     )
     from utils import relative_time  # type: ignore[no-redef]
     from ui.summary_cards import SummaryCards  # type: ignore[no-redef]
+    from ui.confirm_modal import ConfirmModal, TypedConfirmModal  # type: ignore[no-redef]
+
+
+def _record_app_error(app, detail: str) -> None:
+    """Append a raw error detail to the app's ring buffer, if present."""
+    log = getattr(app, "_error_log", None)
+    if log is None:
+        return
+    try:
+        log.append(detail)
+        if len(log) > 50:
+            del log[0 : len(log) - 50]
+    except Exception:
+        pass
 
 
 # ===================================================================
@@ -75,79 +92,147 @@ except ImportError:
 # ===================================================================
 
 class CommitModal(ModalScreen):
-    """Modal dialog for composing and submitting a git commit."""
+    """Three-pane commit dialog.
+
+    Left column: Staged / Unstaged / Untracked file lists.
+    Right column: commit message input + action buttons.
+
+    Keys:
+      Space            toggle stage / unstage on highlighted file
+      Tab / Shift+Tab  cycle focus between panes and the message input
+      Ctrl+Enter       commit (also Enter from message input)
+      Esc              cancel
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=True),
+        Binding("ctrl+j", "commit", "Commit", show=True),  # Ctrl+Enter on most terminals
+        Binding("ctrl+s", "commit", "Commit", show=False),
+        Binding("space", "toggle_stage", "Stage/Unstage", show=True),
+    ]
 
     DEFAULT_CSS = """
-    CommitModal {
-        align: center middle;
-    }
-    #commit-dialog {
-        width: 64;
-        height: auto;
+    CommitModal { align: center middle; }
+    #commit-frame {
+        width: 110;
+        max-width: 95%;
+        height: 32;
+        max-height: 90%;
         padding: 1 2;
         background: #111827;
-        border: solid #8b5cf6;
+        border: round #8b5cf6;
     }
     #commit-title {
+        width: 100%;
+        height: 1;
         text-style: bold;
         color: #8b5cf6;
         margin-bottom: 1;
-        text-align: center;
-        width: 100%;
-        height: 1;
     }
-    #commit-staged-info {
-        color: #22c55e;
-        margin-bottom: 1;
-        width: 100%;
-        height: auto;
-    }
-    #commit-msg-input {
-        width: 100%;
-        margin-bottom: 1;
-    }
-    #commit-buttons {
-        layout: horizontal;
-        width: 100%;
-        height: 3;
-        align: center middle;
-    }
-    #btn-do-commit {
-        margin: 0 1;
-    }
-    #btn-cancel-commit {
-        margin: 0 1;
-    }
+    #commit-body { width: 100%; height: 1fr; }
+    #commit-left  { width: 1fr; height: 100%; padding-right: 1; }
+    #commit-right { width: 50; height: 100%; padding-left: 1; border-left: solid #1f2937; }
+    #commit-sub-tabs { height: 1fr; }
+    .commit-list { height: 1fr; background: #0b0f14; border: solid #1f2937; }
+    #commit-msg-input { width: 100%; margin-bottom: 1; }
+    #commit-error { width: 100%; height: auto; color: #ef4444; margin-bottom: 1; }
+    #commit-help  { width: 100%; height: auto; color: #6b7280; margin-bottom: 1; }
+    #commit-btns  { width: 100%; height: 3; align: right middle; }
+    #commit-btns Button { margin: 0 0 0 1; min-width: 12; }
     """
 
-    def __init__(self, staged_files: list[str], **kwargs) -> None:
+    def __init__(self, repo_path: Path, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._staged_files = staged_files
+        self._repo_path = repo_path
+        self._fs = get_status(repo_path)
 
     def compose(self) -> ComposeResult:
-        with Container(id="commit-dialog"):
-            yield Static("Commit Changes", id="commit-title", markup=False)
-            n = len(self._staged_files)
-            if n == 0:
-                info = "  No files staged. Use 's' or 'a' to stage first."
-            else:
-                names = ", ".join(self._staged_files[:4])
-                extra = f" +{n - 4} more" if n > 4 else ""
-                info = f"  Staged ({n}): {names}{extra}"
-            yield Static(info, id="commit-staged-info", markup=False)
-            yield Input(
-                placeholder="Commit message  (Enter to commit · Esc to cancel)",
-                id="commit-msg-input",
-            )
-            with Horizontal(id="commit-buttons"):
-                yield Button("Commit", id="btn-do-commit", variant="success")
-                yield Button("Cancel", id="btn-cancel-commit")
+        with Container(id="commit-frame"):
+            yield Static(f"Commit — {self._repo_path.name}", id="commit-title", markup=False)
+            with Horizontal(id="commit-body"):
+                with Vertical(id="commit-left"):
+                    with TabbedContent(id="commit-sub-tabs"):
+                        with TabPane(f"Staged ({len(self._fs.staged)})", id="ct-staged"):
+                            yield ListView(id="cm-staged-list", classes="commit-list")
+                        with TabPane(f"Unstaged ({len(self._fs.unstaged)})", id="ct-unstaged"):
+                            yield ListView(id="cm-unstaged-list", classes="commit-list")
+                        with TabPane(f"Untracked ({len(self._fs.untracked)})", id="ct-untracked"):
+                            yield ListView(id="cm-untracked-list", classes="commit-list")
+                with Vertical(id="commit-right"):
+                    yield Static(
+                        "Space = stage/unstage  ·  Ctrl+Enter = commit  ·  Esc = cancel",
+                        id="commit-help", markup=False,
+                    )
+                    yield Static("", id="commit-error", markup=False)
+                    yield Input(
+                        placeholder="Commit message…",
+                        id="commit-msg-input",
+                    )
+                    with Horizontal(id="commit-btns"):
+                        yield Button("Cancel", id="cm-cancel")
+                        yield Button("Commit", id="cm-commit", variant="success")
 
     def on_mount(self) -> None:
+        self._refill()
         self.query_one("#commit-msg-input", Input).focus()
 
+    def _refill(self) -> None:
+        self._fs = get_status(self._repo_path)
+        for tab_id, files, kind, empty in (
+            ("ct-staged",    self._fs.staged,    "staged",    "No files staged"),
+            ("ct-unstaged",  self._fs.unstaged,  "unstaged",  "No unstaged changes"),
+            ("ct-untracked", self._fs.untracked, "untracked", "No untracked files"),
+        ):
+            try:
+                pane = self.query_one(f"#{tab_id}", TabPane)
+                pane.label = f"{kind.capitalize()} ({len(files)})"
+            except Exception:
+                pass
+            list_id = {
+                "ct-staged": "#cm-staged-list",
+                "ct-unstaged": "#cm-unstaged-list",
+                "ct-untracked": "#cm-untracked-list",
+            }[tab_id]
+            lv = self.query_one(list_id, ListView)
+            lv.clear()
+            if not files:
+                lv.append(ListItem(Static(f"  [dim #6b7280]{empty}[/]", markup=True)))
+                continue
+            for f in files:
+                lv.append(StatusFileItem(f, kind))
+
+    def _active_list_and_kind(self) -> tuple[ListView | None, str]:
+        try:
+            tc = self.query_one("#commit-sub-tabs", TabbedContent)
+            active = str(tc.active or "ct-staged")
+        except Exception:
+            return None, ""
+        mapping = {
+            "ct-staged":    ("#cm-staged-list",    "staged"),
+            "ct-unstaged":  ("#cm-unstaged-list",  "unstaged"),
+            "ct-untracked": ("#cm-untracked-list", "untracked"),
+        }
+        list_id, kind = mapping.get(active, ("#cm-staged-list", "staged"))
+        try:
+            return self.query_one(list_id, ListView), kind
+        except Exception:
+            return None, kind
+
+    def action_toggle_stage(self) -> None:
+        lv, kind = self._active_list_and_kind()
+        if lv is None:
+            return
+        item = lv.highlighted_child
+        if not isinstance(item, StatusFileItem):
+            return
+        if kind == "staged":
+            unstage_files(self._repo_path, [item.filepath])
+        else:
+            stage_files(self._repo_path, [item.filepath])
+        self._refill()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-do-commit":
+        if event.button.id == "cm-commit":
             self._submit()
         else:
             self.dismiss(None)
@@ -156,14 +241,22 @@ class CommitModal(ModalScreen):
         if event.input.id == "commit-msg-input":
             self._submit()
 
-    def on_key(self, event) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-            event.stop()
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_commit(self) -> None:
+        self._submit()
 
     def _submit(self) -> None:
         msg = self.query_one("#commit-msg-input", Input).value.strip()
-        self.dismiss(msg or None)
+        err = self.query_one("#commit-error", Static)
+        if not msg:
+            err.update("  ✗ Commit message cannot be empty")
+            return
+        if not self._fs.staged:
+            err.update("  ✗ No staged files — Space on a file to stage it")
+            return
+        self.dismiss(msg)
 
 
 # ===================================================================
@@ -210,9 +303,14 @@ class NewBranchModal(ModalScreen):
     }
     """
 
+    def __init__(self, existing: list[str] | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._existing = set(existing or [])
+
     def compose(self) -> ComposeResult:
         with Container(id="new-branch-dialog"):
             yield Static("New Branch", id="new-branch-title", markup=False)
+            yield Static("", id="new-branch-error", markup=False)
             yield Input(
                 placeholder="Branch name  (Enter to create · Esc to cancel)",
                 id="new-branch-input",
@@ -241,7 +339,19 @@ class NewBranchModal(ModalScreen):
 
     def _submit(self) -> None:
         name = self.query_one("#new-branch-input", Input).value.strip()
-        self.dismiss(name or None)
+        err = self.query_one("#new-branch-error", Static)
+        if not name:
+            err.update("  ✗ Branch name cannot be empty")
+            return
+        # git ref name rules (subset of check-ref-format)
+        invalid = re.search(r"[\s~^:?*\[\\]|\.\.|@\{|//", name) or name.startswith((".", "/", "-")) or name.endswith((".", "/", ".lock"))
+        if invalid:
+            err.update("  ✗ Invalid branch name (no spaces, ~ ^ : ? * [ \\ .. //)")
+            return
+        if name in self._existing:
+            err.update(f"  ✗ Branch '{name}' already exists")
+            return
+        self.dismiss(name)
 
 
 # ===================================================================
@@ -571,6 +681,63 @@ class StatusFileItem(ListItem):
 # Main tabbed panel
 # ===================================================================
 
+# ── Tab data fetchers (run in worker threads — must NOT touch Textual widgets) ──
+
+def _fetch_status(path, info, commits_n):
+    fs = get_status(path)
+    stashes = get_stashes(path)
+    try:
+        file_tree = get_file_tree(path)
+    except Exception:
+        file_tree = None
+    return {
+        "info": info,
+        "fs": fs,
+        "stashes": stashes,
+        "file_tree": file_tree,
+        "recent_commits": get_commits(path, 6),
+        "remotes": get_remotes(path),
+    }
+
+
+def _fetch_commits(path, info, commits_n):
+    return {
+        "commits": get_commits(path, commits_n),
+        "graph": get_commit_graph(path, max(commits_n, 40)),
+    }
+
+
+def _fetch_diff(path, info, commits_n):
+    return {"changed": get_changed_files(path)}
+
+
+def _fetch_branches(path, info, commits_n):
+    return {"branches": get_branches(path)}
+
+
+def _fetch_remotes(path, info, commits_n):
+    return {"remotes": get_remotes(path)}
+
+
+def _fetch_tags(path, info, commits_n):
+    return {"tags": get_tags(path)}
+
+
+def _fetch_tree(path, info, commits_n):
+    return {"files": get_tracked_files(path)}
+
+
+_TAB_FETCHERS = {
+    "status":   _fetch_status,
+    "commits":  _fetch_commits,
+    "diff":     _fetch_diff,
+    "branches": _fetch_branches,
+    "remotes":  _fetch_remotes,
+    "tags":     _fetch_tags,
+    "tree":     _fetch_tree,
+}
+
+
 class MainPanel(Widget):
     """
     Right-hand panel with seven tabs:
@@ -606,15 +773,9 @@ class MainPanel(Widget):
         self._current_info: RepoInfo | None = None
         self._commits_n = commits
         self._loaded_tabs: set[str] = set()
-        self._tab_loaders: dict[str, str] = {
-            "status":   "_load_status",
-            "commits":  "_load_commits",
-            "diff":     "_load_diff",
-            "branches": "_load_branches",
-            "remotes":  "_load_remotes",
-            "tags":     "_load_tags",
-            "tree":     "_load_tree",
-        }
+        # Per-tab monotonic token so stale worker results never overwrite
+        # the UI when the user has switched repo/tab in the meantime.
+        self._tab_token: dict[str, int] = {}
 
     # ── Compose ──────────────────────────────────────────────────────
 
@@ -748,6 +909,10 @@ class MainPanel(Widget):
         self._current_repo = repo_path
         self._current_info = repo_info
         self._loaded_tabs.clear()
+        # Bump every tab's token so any in-flight workers for the previous
+        # repo are discarded when they complete.
+        for k in list(self._tab_token.keys()):
+            self._tab_token[k] += 1
         self._load_tab(self._active_tab())
 
     def show_tab(self, tab_id: str) -> None:
@@ -771,53 +936,132 @@ class MainPanel(Widget):
     # ── Tab dispatch ─────────────────────────────────────────────────
 
     def _load_tab(self, tab_id: str) -> None:
+        """Kick off (or short-circuit) loading of a tab in a worker thread."""
         if self._current_repo is None:
             return
         if tab_id in self._loaded_tabs:
             return
-        method_name = self._tab_loaders.get(tab_id)
-        if not method_name:
+
+        fetcher = _TAB_FETCHERS.get(tab_id)
+        if fetcher is None:
             return
-        method = getattr(self, method_name)
-        if tab_id == "status":
-            method(self._current_repo, self._current_info)
-        else:
-            method(self._current_repo)
+
+        # Paint skeleton immediately so the user sees a response.
+        self._paint_skeleton(tab_id)
+        # Mark in-progress so we don't kick off a duplicate worker.
         self._loaded_tabs.add(tab_id)
+
+        path = self._current_repo
+        info = self._current_info
+        commits_n = self._commits_n
+        token = self._tab_token.get(tab_id, 0) + 1
+        self._tab_token[tab_id] = token
+
+        def _runner():
+            try:
+                data = fetcher(path, info, commits_n)
+                return ("ok", tab_id, token, path, data)
+            except Exception as exc:
+                return ("err", tab_id, token, path, exc)
+
+        self.run_worker(
+            _runner, thread=True, group=f"tabload:{tab_id}", exclusive=True,
+        )
 
     def _reload_tab(self, tab_id: str) -> None:
         self._loaded_tabs.discard(tab_id)
         self._load_tab(tab_id)
 
+    # ── Skeletons (instant paint while worker fetches) ──────────────
+
+    def _paint_skeleton(self, tab_id: str) -> None:
+        try:
+            if tab_id == "status":
+                self.query_one("#repo-header", Static).update(
+                    "[#6b7280]Loading repository…[/]"
+                )
+                for sid in ("#status-tree", "#status-commits", "#status-remotes"):
+                    self.query_one(sid, Static).update("[dim #6b7280]loading…[/]")
+                for lid, label in (
+                    ("#staged-list", "loading…"),
+                    ("#unstaged-list", "loading…"),
+                    ("#untracked-list", "loading…"),
+                    ("#stashes-list", "loading…"),
+                ):
+                    lv = self.query_one(lid, ListView)
+                    lv.clear()
+                    lv.append(ListItem(Static(f"[dim #6b7280]  {label}[/]", markup=True)))
+            elif tab_id == "commits":
+                self.query_one("#commits-table", DataTable).clear()
+                self.query_one("#commits-graph", Static).update("[dim #6b7280]loading commit graph…[/]")
+            elif tab_id == "diff":
+                fl = self.query_one("#diff-file-list", ListView)
+                fl.clear()
+                fl.append(ListItem(Static("[dim #6b7280]  loading…[/]", markup=True)))
+                self.query_one("#diff-content", Static).update("[dim #6b7280]loading…[/]")
+            elif tab_id == "branches":
+                bl = self.query_one("#branch-list", ListView)
+                bl.clear()
+                bl.append(ListItem(Static("[dim #6b7280]  loading branches…[/]", markup=True)))
+            elif tab_id == "remotes":
+                self.query_one("#remotes-content", Static).update("[dim #6b7280]loading remotes…[/]")
+            elif tab_id == "tags":
+                t = self.query_one("#tags-table", DataTable)
+                t.clear()
+            elif tab_id == "tree":
+                tw = self.query_one("#tree-widget", Tree)
+                tw.clear()
+                tw.root.label = "loading…"
+        except Exception:
+            pass
+
+    # ── Worker result dispatch ──────────────────────────────────────
+
+    def _on_tab_result(self, tab_id: str, token: int, path: Path, status: str, data) -> None:
+        """Apply (or discard) a tab worker's result on the UI thread."""
+        # Discard stale results (user switched repo / re-requested).
+        if self._current_repo != path:
+            return
+        if self._tab_token.get(tab_id) != token:
+            return
+        if status == "err":
+            hint, detail = classify_error(data)
+            self.app.notify(f"{tab_id}: {hint}", severity="error", timeout=5)
+            _record_app_error(self.app, detail)
+            # Allow a retry next time the tab is visited.
+            self._loaded_tabs.discard(tab_id)
+            return
+        applier = getattr(self, f"_apply_{tab_id}", None)
+        if applier is None:
+            return
+        try:
+            applier(path, data)
+        except Exception as exc:
+            self.app.notify(f"render error: {exc}", severity="error", timeout=4)
+
     # ── Tab loaders ──────────────────────────────────────────────────
 
-    def _load_status(self, repo_path: Path, info: RepoInfo | None) -> None:
-        fs = get_status(repo_path)
-        stashes = get_stashes(repo_path)
+    def _apply_status(self, repo_path: Path, data: dict) -> None:
+        info = data["info"]
+        fs = data["fs"]
+        stashes = data["stashes"]
 
-        # ── Repo header line ─────────────────────────────────────────
         rel = relative_time(info.last_commit_ts) if info else ""
-        header: Static = self.query_one("#repo-header", Static)
-        header.update(
+        self.query_one("#repo-header", Static).update(
             f"[bold #d1d5db]{repo_path.name}[/]   "
             f"[#6b7280]Path:[/] [#d1d5db]{repo_path}[/]   "
             f"[#6b7280]updated {rel}[/]"
         )
 
-        # ── Summary cards ────────────────────────────────────────────
         self.query_one("#summary-cards", SummaryCards).update_cards(info, stashes)
 
-        # ── Workspace sub-tab lists ──────────────────────────────────
-        self._fill_ws_list("#staged-list", fs.staged, "staged",
-                            "No changes staged")
-        self._fill_ws_list("#unstaged-list", fs.unstaged, "unstaged",
-                            "No unstaged changes")
-        self._fill_ws_list("#untracked-list", fs.untracked, "untracked",
-                            "No untracked files")
+        self._fill_ws_list("#staged-list", fs.staged, "staged", "No changes staged")
+        self._fill_ws_list("#unstaged-list", fs.unstaged, "unstaged", "No unstaged changes")
+        self._fill_ws_list("#untracked-list", fs.untracked, "untracked", "No untracked files")
         self._fill_stash_list(stashes)
 
-        # ── Right-hand panels ────────────────────────────────────────
-        self._load_status_panels(repo_path)
+        # Right-hand panels — use the data already fetched in the worker.
+        self._apply_status_panels(data)
 
     def _empty_row(self, message: str) -> ListItem:
         """Build a centered empty-state row for an empty workspace list."""
@@ -852,17 +1096,12 @@ class MainPanel(Widget):
             t.append(s.message, style="#d1d5db")
             lv.append(ListItem(Static(t)))
 
-    def _load_status_panels(self, repo_path: Path) -> None:
-        """Populate the three right-hand panels: tree, commits, remotes."""
-        # File tree (Rich tree renderable)
-        try:
-            tree = get_file_tree(repo_path)
-        except Exception:
-            tree = "[#6b7280]No tracked files[/]"
+    def _apply_status_panels(self, data: dict) -> None:
+        """Populate the three right-hand panels from pre-fetched data."""
+        tree = data.get("file_tree") or "[#6b7280]No tracked files[/]"
         self.query_one("#status-tree", Static).update(tree)
 
-        # Recent commits — compact list
-        commits = get_commits(repo_path, 6)
+        commits = data.get("recent_commits") or []
         if commits:
             lines: list[str] = []
             for c in commits:
@@ -874,12 +1113,9 @@ class MainPanel(Widget):
                 )
             self.query_one("#status-commits", Static).update("\n".join(lines))
         else:
-            self.query_one("#status-commits", Static).update(
-                "[#6b7280]No commits[/]"
-            )
+            self.query_one("#status-commits", Static).update("[#6b7280]No commits[/]")
 
-        # Remote summary
-        remotes = get_remotes(repo_path)
+        remotes = data.get("remotes") or []
         if remotes:
             lines = []
             for r in remotes:
@@ -889,17 +1125,13 @@ class MainPanel(Widget):
                 )
             self.query_one("#status-remotes", Static).update("\n".join(lines))
         else:
-            self.query_one("#status-remotes", Static).update(
-                "[#6b7280]No remotes configured[/]"
-            )
+            self.query_one("#status-remotes", Static).update("[#6b7280]No remotes configured[/]")
 
-    def _load_commits(self, repo_path: Path) -> None:
+    def _apply_commits(self, repo_path: Path, data: dict) -> None:
         table: DataTable = self.query_one("#commits-table", DataTable)
         table.clear()
-        commits = get_commits(repo_path, self._commits_n)
-
-        # ── Commit graph (ASCII art) ─────────────────────────────────
-        graph_text = get_commit_graph(repo_path, max(self._commits_n, 40))
+        commits = data["commits"]
+        graph_text = data["graph"]
         graph_static: Static = self.query_one("#commits-graph", Static)
         if graph_text and not graph_text.startswith("Error"):
             # Colorize graph characters using sentinels so successive
@@ -957,13 +1189,13 @@ class MainPanel(Widget):
                 c.message[:60], str(c.files_changed), pm,
             )
 
-    def _load_diff(self, repo_path: Path) -> None:
+    def _apply_diff(self, repo_path: Path, data: dict) -> None:
         file_list: ListView = self.query_one("#diff-file-list", ListView)
         content: Static = self.query_one("#diff-content", Static)
         file_list.clear()
         content.update("[dim italic]← Select a file to view its diff[/]")
 
-        changed = get_changed_files(repo_path)
+        changed = data["changed"]
         if not any(changed.values()):
             file_list.append(ListItem(Static(
                 "[dim italic]  No uncommitted changes[/]", markup=True
@@ -977,10 +1209,10 @@ class MainPanel(Widget):
         for f in changed.get("untracked", []):
             file_list.append(DiffFileItem(f, "untracked"))
 
-    def _load_branches(self, repo_path: Path) -> None:
+    def _apply_branches(self, repo_path: Path, data: dict) -> None:
         branch_list: ListView = self.query_one("#branch-list", ListView)
         branch_list.clear()
-        branches = get_branches(repo_path)
+        branches = data["branches"]
         if not branches:
             branch_list.append(ListItem(
                 Static("[dim italic]No branches found[/]", markup=True)
@@ -989,8 +1221,8 @@ class MainPanel(Widget):
         for b in branches:
             branch_list.append(BranchListItem(b))
 
-    def _load_remotes(self, repo_path: Path) -> None:
-        remotes = get_remotes(repo_path)
+    def _apply_remotes(self, repo_path: Path, data: dict) -> None:
+        remotes = data["remotes"]
         lines: list[str] = []
         if not remotes:
             lines.append("[dim italic]No remotes configured[/]")
@@ -1010,17 +1242,17 @@ class MainPanel(Widget):
                 lines.append("")
         self.query_one("#remotes-content", Static).update("\n".join(lines))
 
-    def _load_tags(self, repo_path: Path) -> None:
+    def _apply_tags(self, repo_path: Path, data: dict) -> None:
         table: DataTable = self.query_one("#tags-table", DataTable)
         table.clear()
-        tags = get_tags(repo_path)
+        tags = data["tags"]
         if not tags:
             table.add_row("—", "No tags", "", "")
             return
         for t in tags:
             table.add_row(t.name, t.date, t.tagger, t.message[:60])
 
-    def _load_tree(self, repo_path: Path) -> None:
+    def _apply_tree(self, repo_path: Path, data: dict) -> None:
         tree_widget: Tree = self.query_one("#tree-widget", Tree)
         tree_widget.clear()
         tree_widget.root.label = Text.from_markup(
@@ -1028,7 +1260,7 @@ class MainPanel(Widget):
         )
         tree_widget.root.expand()
 
-        file_paths = get_tracked_files(repo_path)
+        file_paths = data["files"]
         if not file_paths:
             tree_widget.root.add_leaf("[dim italic]No tracked files found[/]")
             return
@@ -1084,19 +1316,48 @@ class MainPanel(Widget):
     def _show_file_diff(self, item: DiffFileItem) -> None:
         if self._current_repo is None:
             return
-        if item.file_status == "untracked":
-            diff_text = f"(new untracked file — not yet staged)\n\n{item.filepath}"
-        else:
-            staged = item.file_status == "staged"
-            diff_text = get_file_diff(self._current_repo, item.filepath, staged=staged)
         content: Static = self.query_one("#diff-content", Static)
-        if not diff_text or diff_text.startswith("(new"):
-            content.update(f"[dim italic]{diff_text}[/]")
-        else:
+        path = self._current_repo
+        fp = item.filepath
+
+        if item.file_status == "untracked":
+            # Show actual file contents so the user can see what they're about to add.
+            try:
+                text = get_file_contents(path, fp)
+            except Exception as exc:
+                content.update(f"[dim italic]Could not read {fp}: {exc}[/]")
+                return
+            if not text:
+                content.update(f"[dim italic](empty new file: {fp})[/]")
+                return
+            # Best-effort lexer guess from extension; fall back to text.
+            ext = fp.rsplit(".", 1)[-1].lower() if "." in fp else ""
+            lexer = {
+                "py": "python", "js": "javascript", "ts": "typescript",
+                "tsx": "tsx", "jsx": "jsx", "go": "go", "rs": "rust",
+                "c": "c", "cpp": "cpp", "h": "c", "java": "java",
+                "rb": "ruby", "sh": "bash", "bash": "bash", "zsh": "bash",
+                "json": "json", "yaml": "yaml", "yml": "yaml",
+                "toml": "toml", "md": "markdown", "html": "html", "css": "css",
+            }.get(ext, "text")
             content.update(
-                Syntax(diff_text, "diff", theme="monokai",
-                       line_numbers=True, word_wrap=False)
+                Syntax(text, lexer, theme="monokai",
+                       line_numbers=True, word_wrap=False, indent_guides=True)
             )
+            return
+
+        staged = item.file_status == "staged"
+        diff_text = get_file_diff(path, fp, staged=staged)
+        if not diff_text or not diff_text.strip():
+            label = "staged" if staged else "unstaged"
+            content.update(f"[dim italic](no {label} changes for {fp})[/]")
+            return
+        # line_numbers=True on diff format renders confusingly because diff
+        # line numbers don't match real file line numbers — drop them.
+        content.update(
+            Syntax(diff_text, "diff", theme="monokai",
+                   line_numbers=False, word_wrap=False)
+        )
 
     # ── Commit diff viewer ────────────────────────────────────────────
 
@@ -1167,29 +1428,70 @@ class MainPanel(Widget):
     def action_stage_all(self) -> None:
         if self._current_repo is None:
             return
-        msg = stage_all(self._current_repo)
-        self.app.notify(msg, timeout=2)
-        self._reload_tab("status")
-        self._loaded_tabs.discard("diff")
+        path = self._current_repo
+        changed = get_changed_files(path)
+        total = len(changed.get("unstaged", [])) + len(changed.get("untracked", []))
+
+        def _do() -> None:
+            msg = stage_all(path)
+            self.app.notify(msg, timeout=2)
+            self._reload_tab("status")
+            self._loaded_tabs.discard("diff")
+
+        if total > 20:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Stage all files?",
+                    body=f"[bold]{total}[/] files will be staged. Continue?",
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_unstage_all(self) -> None:
         if self._current_repo is None:
             return
-        msg = unstage_all(self._current_repo)
-        self.app.notify(msg, timeout=2)
-        self._reload_tab("status")
-        self._loaded_tabs.discard("diff")
+        path = self._current_repo
+        changed = get_changed_files(path)
+        total = len(changed.get("staged", []))
+
+        def _do() -> None:
+            msg = unstage_all(path)
+            self.app.notify(msg, timeout=2)
+            self._reload_tab("status")
+            self._loaded_tabs.discard("diff")
+
+        if total > 20:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Unstage all files?",
+                    body=f"[bold]{total}[/] files will be unstaged. Continue?",
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_open_commit(self) -> None:
         if self._current_repo is None:
             return
-        changed = get_changed_files(self._current_repo)
-        staged = changed.get("staged", [])
+        path = self._current_repo
 
         async def _after_commit(message: str | None) -> None:
             if not message:
+                # User may have toggled staging inside the modal — refresh anyway.
+                for tab in ("status", "diff"):
+                    self._loaded_tabs.discard(tab)
+                self._load_tab(self._active_tab() or "status")
                 return
-            result = commit_changes(self._current_repo, message)
+            result = commit_changes(path, message)
             self.app.notify(result, timeout=4)
             for tab in ("status", "commits", "diff"):
                 self._loaded_tabs.discard(tab)
@@ -1197,7 +1499,7 @@ class MainPanel(Widget):
             self._load_tab(current_tab or "status")
             self.post_message(self.ReloadRequested())
 
-        self.app.push_screen(CommitModal(staged_files=staged), _after_commit)
+        self.app.push_screen(CommitModal(repo_path=path), _after_commit)
 
     def action_new_branch(self) -> None:
         if self._current_repo is None:
@@ -1212,7 +1514,11 @@ class MainPanel(Widget):
             self._loaded_tabs.discard("status")
             self.post_message(self.ReloadRequested())
 
-        self.app.push_screen(NewBranchModal(), _after_create)
+        try:
+            existing = [b.name for b in get_branches(self._current_repo)]
+        except Exception:
+            existing = []
+        self.app.push_screen(NewBranchModal(existing=existing), _after_create)
 
     def action_stash_create(self) -> None:
         """Open the stash dialog (z key)."""
@@ -1231,13 +1537,35 @@ class MainPanel(Widget):
         self.app.push_screen(StashModal(), _after_stash)
 
     def action_stash_pop(self) -> None:
-        """Pop the top stash (Z key)."""
+        """Pop the top stash (Z key) — warn first if working tree is dirty."""
         if self._current_repo is None:
             return
-        result = stash_pop(self._current_repo)
-        self.app.notify(result, timeout=3)
-        self._reload_tab("status")
-        self.post_message(self.ReloadRequested())
+        path = self._current_repo
+
+        def _do() -> None:
+            result = stash_pop(path)
+            self.app.notify(result, timeout=3)
+            self._reload_tab("status")
+            self.post_message(self.ReloadRequested())
+
+        dirty, summary = is_dirty(path)
+        if dirty:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Pop stash over dirty tree?",
+                    body=(
+                        f"Working tree has [bold]{summary}[/]. "
+                        "Pop may produce merge conflicts. Continue?"
+                    ),
+                    danger=True,
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_fetch(self) -> None:
         """Fetch from all remotes (f key in Remotes tab) — runs in background."""
@@ -1251,31 +1579,85 @@ class MainPanel(Widget):
         )
 
     def action_pull(self) -> None:
-        """Pull from the tracking branch (p key in Remotes tab) — runs in background."""
+        """Pull from the tracking branch (p key) — confirm if tree is dirty."""
         if self._current_repo is None:
             return
-        self.app.notify("Pulling…", timeout=2)
         path = self._current_repo
-        self.run_worker(
-            lambda: ("pull", git_pull(path)),
-            thread=True, group="git_op", exclusive=False,
-        )
+
+        def _do() -> None:
+            self.app.notify("Pulling…", timeout=2)
+            self.run_worker(
+                lambda: ("pull", git_pull(path)),
+                thread=True, group="git_op", exclusive=False,
+            )
+
+        dirty, summary = is_dirty(path)
+        if dirty:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Pull over dirty tree?",
+                    body=(
+                        f"Working tree has [bold]{summary}[/]. "
+                        "Pull may fail or create conflicts. Continue?"
+                    ),
+                    danger=True,
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_push(self) -> None:
-        """Push to the tracking branch (P key in Remotes tab) — runs in background."""
+        """Push to the tracking branch (P key) — always confirm."""
         if self._current_repo is None:
             return
-        self.app.notify("Pushing…", timeout=2)
         path = self._current_repo
-        self.run_worker(
-            lambda: ("push", git_push(path)),
-            thread=True, group="git_op", exclusive=False,
+        repo_name = path.name
+
+        def _do() -> None:
+            self.app.notify("Pushing…", timeout=2)
+            self.run_worker(
+                lambda: ("push", git_push(path)),
+                thread=True, group="git_op", exclusive=False,
+            )
+
+        async def _after(ok: bool | None) -> None:
+            if ok:
+                _do()
+
+        self.app.push_screen(
+            ConfirmModal(
+                title=f"Push {repo_name}?",
+                body=(
+                    f"Push current branch from [bold #8b5cf6]{repo_name}[/] to its "
+                    "tracking remote?"
+                ),
+            ),
+            _after,
         )
 
     def on_worker_state_changed(self, event) -> None:
-        """Handle results from background git_op workers (fetch/pull/push)."""
+        """Handle results from background workers (tab-load + git_op)."""
         from textual.worker import WorkerState
-        group = getattr(event.worker, "group", None)
+        group = getattr(event.worker, "group", None) or ""
+
+        # Tab loaders
+        if group.startswith("tabload:"):
+            event.stop()
+            if event.state == WorkerState.SUCCESS and event.worker.result is not None:
+                status, tab_id, token, path, data = event.worker.result
+                self._on_tab_result(tab_id, token, path, status, data)
+            elif event.state == WorkerState.ERROR:
+                tab_id = group.split(":", 1)[1]
+                hint, detail = classify_error(event.worker.error)
+                self.app.notify(f"{tab_id}: {hint}", severity="error", timeout=5)
+                _record_app_error(self.app, detail)
+                self._loaded_tabs.discard(tab_id)
+            return
+
         if group != "git_op":
             return
         event.stop()  # Don't let it bubble to the App's handler
@@ -1290,10 +1672,9 @@ class MainPanel(Widget):
             self._load_tab(self._active_tab())
             self.post_message(self.ReloadRequested())
         elif event.state == WorkerState.ERROR:
-            self.app.notify(
-                f"Git operation failed: {event.worker.error}",
-                severity="error", timeout=5,
-            )
+            hint, detail = classify_error(event.worker.error)
+            self.app.notify(hint, severity="error", timeout=6)
+            _record_app_error(self.app, detail)
 
 
     def _delete_selected_branch(self) -> None:
@@ -1309,10 +1690,34 @@ class MainPanel(Widget):
                 severity="warning", timeout=3,
             )
             return
-        result = delete_branch(self._current_repo, item.branch_info.name)
-        self.app.notify(result, timeout=3)
-        self._reload_tab("branches")
-        self.post_message(self.ReloadRequested())
+        branch_name = item.branch_info.name
+        path = self._current_repo
+        phrase = f"delete {branch_name}"
+
+        async def _after(ok: bool | None) -> None:
+            if not ok:
+                return
+            result = delete_branch(path, branch_name)
+            if result.startswith("Error"):
+                hint, detail = classify_error(result)
+                self.app.notify(hint, severity="error", timeout=6)
+                _record_app_error(self.app, detail)
+            else:
+                self.app.notify(result, timeout=3)
+            self._reload_tab("branches")
+            self.post_message(self.ReloadRequested())
+
+        self.app.push_screen(
+            TypedConfirmModal(
+                title=f"Delete branch '{branch_name}'?",
+                body=(
+                    f"This will permanently delete branch "
+                    f"[bold #ef4444]{branch_name}[/] from this repo."
+                ),
+                phrase=phrase,
+            ),
+            _after,
+        )
 
     # ── Events ───────────────────────────────────────────────────────
 

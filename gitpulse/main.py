@@ -87,6 +87,7 @@ class GitPulseApp(App):
         Binding("d", "open_digest", "Digest", show=True),
         Binding("colon", "open_palette", "Actions", show=True),
         Binding("b", "open_stale", "Stale", show=True),
+        Binding("P", "push_all", "Push all", show=True),
         Binding("slash", "search", "Search", show=True),
         Binding("escape", "clear_search", "Clear", show=False),
         Binding("tab", "focus_next", "Next", show=False),
@@ -317,6 +318,26 @@ class GitPulseApp(App):
         """User clicked a tab in the header."""
         self._switch_tab(message.tab_id)
 
+    def action_push_all(self) -> None:
+        """Shift+P — push every repo currently visible in the sidebar (after confirm)."""
+        targets = list(self.repos) if self.repos else list(self._all_repos)
+        if not targets:
+            self.notify("No repos to push", timeout=2)
+            return
+        names = ", ".join(r.name for r in targets[:5])
+        extra = f" +{len(targets) - 5} more" if len(targets) > 5 else ""
+        async def _after(ok: bool | None) -> None:
+            if ok:
+                self._dispatch_bulk("push", targets)
+        self.push_screen(
+            ConfirmModal(
+                title=f"Push {len(targets)} repo(s)?",
+                body=f"[bold #8b5cf6]{names}[/]{extra}",
+                danger=True,
+            ),
+            _after,
+        )
+
     def action_open_help(self) -> None:
         """Show the keyboard-shortcut cheat sheet (bound to '?')."""
         self.push_screen(HelpModal())
@@ -372,7 +393,6 @@ class GitPulseApp(App):
                 switch_msg, updated_info = event.worker.result
                 self.notify(switch_msg, timeout=3)
                 self._refresh_single_repo(updated_info)
-                self._start_scan()
                 return
 
             if group not in (None, "scan"):
@@ -388,15 +408,29 @@ class GitPulseApp(App):
             # Snapshot signatures for watch mode
             self._signatures = _watcher.snapshot(infos)
 
+            # Determine which repo to keep highlighted across the rescan.
+            keep_path = self._selected_repo.path if self._selected_repo else None
+            keep = None
+            if keep_path is not None:
+                for r in self.repos:
+                    if r.path == keep_path:
+                        keep = r
+                        break
+
             sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
             live = self._watch_enabled and not self._watch_paused
             sidebar.update_header(scanning=False, count=len(infos), live=live)
-            sidebar.populate(self.repos)
+            sidebar.populate(self.repos, keep_path=keep.path if keep else None)
 
             fleet: FleetStatus = self.query_one("#fleet-status", FleetStatus)
             fleet.update_counters(infos)
 
-            if self.repos:
+            if keep is not None:
+                # Refresh in-memory ref + subtitle without forcing a full tab
+                # reload (the user's tabs already have current data).
+                self._selected_repo = keep
+                self.sub_title = f"{keep.name}  ·  {keep.branch}"
+            elif self.repos:
                 self._select_repo(self.repos[0])
 
         elif event.state == WorkerState.ERROR:
@@ -578,10 +612,21 @@ class GitPulseApp(App):
             )
 
     def on_main_panel_reload_requested(self, message: MainPanel.ReloadRequested) -> None:
-        """Fired after a commit or branch operation — rescan to update sidebar."""
+        """Fired after a commit / stash / branch op.
+
+        Just re-enrich the active repo in the background and patch the sidebar;
+        do NOT trigger a full filesystem rescan (that's what was wiping the
+        user's tab state and selection).
+        """
         if self._selected_repo is None:
             return
-        self._start_scan()
+        path = self._selected_repo.path
+        self.run_worker(
+            lambda p=path: get_repo_info(p),
+            thread=True,
+            group="watch",
+            exclusive=False,
+        )
 
 
 # -----------------------------------------------------------------------

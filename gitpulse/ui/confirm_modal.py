@@ -18,25 +18,53 @@ from textual.widgets import Button, Input, Static
 
 
 _BASE_CSS = """
-ModalScreen { align: center middle; }
+ConfirmModal, TypedConfirmModal, DirtyTreeModal {
+    align: center middle;
+}
 .cm-frame {
-    width: 60;
-    max-width: 80;
+    width: 64;
+    max-width: 90%;
     height: auto;
     padding: 1 2;
     background: #111827;
-    border: solid #8b5cf6;
-    border-title-align: left;
+    border: round #8b5cf6;
 }
-.cm-frame.-danger { border: solid #ef4444; }
-.cm-title { text-style: bold; margin-bottom: 1; }
+.cm-frame.-danger { border: round #ef4444; }
+.cm-title {
+    text-style: bold;
+    width: 100%;
+    height: 1;
+    margin-bottom: 1;
+    content-align: left middle;
+}
 .cm-title.-danger { color: #ef4444; }
 .cm-title.-safe   { color: #8b5cf6; }
-.cm-body  { color: #d1d5db; margin-bottom: 1; }
-.cm-hint  { color: #f59e0b; margin-bottom: 1; }
-.cm-btns  { layout: horizontal; width: 100%; height: 3; align: center middle; }
-.cm-btns Button { margin: 0 1; }
-.cm-input { width: 100%; margin-bottom: 1; }
+.cm-body {
+    color: #d1d5db;
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+}
+.cm-hint {
+    color: #f59e0b;
+    width: 100%;
+    height: 1;
+    margin-bottom: 1;
+}
+.cm-input {
+    width: 100%;
+    margin-bottom: 1;
+}
+.cm-btns {
+    width: 100%;
+    height: 3;
+    align: right middle;
+    padding-top: 1;
+}
+.cm-btns Button {
+    margin: 0 0 0 1;
+    min-width: 12;
+}
 """
 
 

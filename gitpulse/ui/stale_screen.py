@@ -20,70 +20,13 @@ try:
     from gitpulse.stale import gather_all_repos, categorize
     from gitpulse.parallel import run_parallel
     from gitpulse.utils import relative_time
+    from gitpulse.ui.confirm_modal import TypedConfirmModal
 except ImportError:
     from git_ops import BranchDetail, delete_branch  # type: ignore
     from stale import gather_all_repos, categorize  # type: ignore
     from parallel import run_parallel  # type: ignore
     from utils import relative_time  # type: ignore
-
-
-class DeleteConfirmModal(ModalScreen):
-    """Type-to-confirm modal for bulk branch deletion."""
-
-    BINDINGS = [Binding("escape", "close", "Cancel", show=True)]
-
-    DEFAULT_CSS = """
-    DeleteConfirmModal { align: center middle; }
-    #dconf-frame {
-        width: 56;
-        height: auto;
-        padding: 1 2;
-        background: #111827;
-        border: solid #ef4444;
-    }
-    #dconf-title { color: #ef4444; text-style: bold; margin-bottom: 1; }
-    #dconf-info  { color: #f59e0b; margin-bottom: 1; }
-    #dconf-input { width: 100%; margin-bottom: 1; }
-    #dconf-btns  { layout: horizontal; width: 100%; height: 3; align: center middle; }
-    """
-
-    def __init__(self, count: int, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._count = count
-        self._phrase = f"delete {count} branch{'es' if count != 1 else ''}"
-
-    def compose(self) -> ComposeResult:
-        with Container(id="dconf-frame"):
-            yield Static(f"Delete {self._count} branch{'es' if self._count != 1 else ''}?", id="dconf-title", markup=False)
-            yield Static(f'  Type exactly: {self._phrase}', id="dconf-info", markup=False)
-            yield Input(placeholder=self._phrase, id="dconf-input")
-            with Horizontal(id="dconf-btns"):
-                yield Button("Delete", id="btn-confirm-del", variant="error")
-                yield Button("Cancel", id="btn-cancel-del")
-
-    def on_mount(self) -> None:
-        self.query_one("#dconf-input", Input).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-confirm-del":
-            self._try_confirm()
-        else:
-            self.dismiss(False)
-
-    def on_input_submitted(self, _) -> None:
-        self._try_confirm()
-
-    def _try_confirm(self) -> None:
-        val = self.query_one("#dconf-input", Input).value.strip()
-        if val == self._phrase:
-            self.dismiss(True)
-        else:
-            self.query_one("#dconf-info", Static).update(
-                f"  ✗ Must match exactly: {self._phrase}", markup=False
-            )
-
-    def action_close(self) -> None:
-        self.dismiss(False)
+    from ui.confirm_modal import TypedConfirmModal  # type: ignore
 
 
 class StaleScreen(ModalScreen):
@@ -274,7 +217,16 @@ class StaleScreen(ModalScreen):
             self._selected.clear()
             self._load_data()
 
-        self.app.push_screen(DeleteConfirmModal(count=len(self._selected)), _after_confirm)
+        count = len(self._selected)
+        phrase = f"delete {count} branch{'es' if count != 1 else ''}"
+        self.app.push_screen(
+            TypedConfirmModal(
+                title=f"Delete {count} branch{'es' if count != 1 else ''}?",
+                body=f"This will permanently delete [bold #ef4444]{count}[/] branches across selected repos.",
+                phrase=phrase,
+            ),
+            _after_confirm,
+        )
 
     def action_close(self) -> None:
         self.dismiss()

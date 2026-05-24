@@ -1073,3 +1073,69 @@ def get_author_commits(
     except Exception:
         pass
     return commits
+
+
+# ---------------------------------------------------------------------------
+# UX helpers (dirty-tree detection, error classification)
+# ---------------------------------------------------------------------------
+
+def is_dirty(path: Path) -> tuple[bool, str]:
+    """
+    Return ``(dirty, short_summary)`` for the working tree at ``path``.
+
+    Summary looks like ``"3 modified, 2 staged, 1 untracked"`` and is empty
+    when the tree is clean. Reuses :func:`get_status` and never raises —
+    on error returns ``(False, "")`` so callers can fall through safely.
+    """
+    try:
+        fs = get_status(path)
+    except Exception:
+        return False, ""
+    parts: list[str] = []
+    if fs.staged:
+        parts.append(f"{len(fs.staged)} staged")
+    if fs.unstaged:
+        parts.append(f"{len(fs.unstaged)} modified")
+    if fs.untracked:
+        parts.append(f"{len(fs.untracked)} untracked")
+    return (bool(parts), ", ".join(parts))
+
+
+def classify_error(exc: BaseException | str) -> tuple[str, str]:
+    """
+    Map a git/GitPython exception (or its string form) to ``(hint, raw_detail)``.
+
+    ``hint`` is a short user-facing line; ``raw_detail`` is the original
+    message preserved for the in-app error log. Patterns matched:
+
+    - auth/permission denied  → credential issue
+    - non-fast-forward / rejected → pull first
+    - merge/rebase conflict → resolve and continue
+    - detached HEAD → checkout a branch
+    - index/ref lock held → another git process running
+    - network unreachable / could not resolve host → connectivity
+    """
+    detail = str(exc)
+    low = detail.lower()
+    if "permission denied" in low or "authentication failed" in low or "could not read username" in low:
+        return ("Authentication failed — check credentials or SSH key.", detail)
+    if "non-fast-forward" in low or "rejected" in low and "fetch first" in low:
+        return ("Push rejected (non-fast-forward) — pull or rebase first.", detail)
+    if "rejected" in low and "non-fast" in low:
+        return ("Push rejected — remote has new commits; pull first.", detail)
+    if "merge conflict" in low or "fix conflicts" in low or "unmerged paths" in low:
+        return ("Merge conflict — resolve conflicting files, then commit.", detail)
+    if "you are in 'detached head' state" in low or "detached head" in low:
+        return ("Detached HEAD — checkout a branch before committing.", detail)
+    if "index.lock" in low or "ref" in low and ".lock" in low:
+        return ("Git lock file present — another git process may be running.", detail)
+    if "could not resolve host" in low or "network is unreachable" in low or "connection timed out" in low:
+        return ("Network unreachable — check your connection.", detail)
+    if "no upstream" in low or "no tracking information" in low:
+        return ("No upstream branch — push with --set-upstream first.", detail)
+    if "would be overwritten" in low:
+        return ("Local changes would be overwritten — stash or commit first.", detail)
+    # Fallback: trim long messages
+    short = detail.splitlines()[0][:120] if detail else "Git operation failed."
+    return (short, detail)
+

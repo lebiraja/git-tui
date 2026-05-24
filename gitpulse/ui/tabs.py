@@ -50,10 +50,12 @@ try:
         git_fetch, git_pull, git_push,
         stash_create, stash_pop,
         get_commit_graph, get_file_contents, get_tracked_files,
+        is_dirty, classify_error,
         BranchInfo, RepoInfo,
     )
     from gitpulse.utils import relative_time
     from gitpulse.ui.summary_cards import SummaryCards
+    from gitpulse.ui.confirm_modal import ConfirmModal, TypedConfirmModal
 except ImportError:
     from git_ops import (  # type: ignore[no-redef]
         get_status, get_commits, get_branches,
@@ -64,10 +66,25 @@ except ImportError:
         git_fetch, git_pull, git_push,
         stash_create, stash_pop,
         get_commit_graph, get_file_contents, get_tracked_files,
+        is_dirty, classify_error,
         BranchInfo, RepoInfo,
     )
     from utils import relative_time  # type: ignore[no-redef]
     from ui.summary_cards import SummaryCards  # type: ignore[no-redef]
+    from ui.confirm_modal import ConfirmModal, TypedConfirmModal  # type: ignore[no-redef]
+
+
+def _record_app_error(app, detail: str) -> None:
+    """Append a raw error detail to the app's ring buffer, if present."""
+    log = getattr(app, "_error_log", None)
+    if log is None:
+        return
+    try:
+        log.append(detail)
+        if len(log) > 50:
+            del log[0 : len(log) - 50]
+    except Exception:
+        pass
 
 
 # ===================================================================
@@ -135,6 +152,7 @@ class CommitModal(ModalScreen):
                 extra = f" +{n - 4} more" if n > 4 else ""
                 info = f"  Staged ({n}): {names}{extra}"
             yield Static(info, id="commit-staged-info", markup=False)
+            yield Static("", id="commit-error", markup=False)
             yield Input(
                 placeholder="Commit message  (Enter to commit · Esc to cancel)",
                 id="commit-msg-input",
@@ -163,7 +181,14 @@ class CommitModal(ModalScreen):
 
     def _submit(self) -> None:
         msg = self.query_one("#commit-msg-input", Input).value.strip()
-        self.dismiss(msg or None)
+        err = self.query_one("#commit-error", Static)
+        if not msg:
+            err.update("  ✗ Commit message cannot be empty")
+            return
+        if not self._staged_files:
+            err.update("  ✗ No staged files — stage with 's' or 'a' first")
+            return
+        self.dismiss(msg)
 
 
 # ===================================================================
@@ -210,9 +235,14 @@ class NewBranchModal(ModalScreen):
     }
     """
 
+    def __init__(self, existing: list[str] | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._existing = set(existing or [])
+
     def compose(self) -> ComposeResult:
         with Container(id="new-branch-dialog"):
             yield Static("New Branch", id="new-branch-title", markup=False)
+            yield Static("", id="new-branch-error", markup=False)
             yield Input(
                 placeholder="Branch name  (Enter to create · Esc to cancel)",
                 id="new-branch-input",
@@ -241,7 +271,19 @@ class NewBranchModal(ModalScreen):
 
     def _submit(self) -> None:
         name = self.query_one("#new-branch-input", Input).value.strip()
-        self.dismiss(name or None)
+        err = self.query_one("#new-branch-error", Static)
+        if not name:
+            err.update("  ✗ Branch name cannot be empty")
+            return
+        # git ref name rules (subset of check-ref-format)
+        invalid = re.search(r"[\s~^:?*\[\\]|\.\.|@\{|//", name) or name.startswith((".", "/", "-")) or name.endswith((".", "/", ".lock"))
+        if invalid:
+            err.update("  ✗ Invalid branch name (no spaces, ~ ^ : ? * [ \\ .. //)")
+            return
+        if name in self._existing:
+            err.update(f"  ✗ Branch '{name}' already exists")
+            return
+        self.dismiss(name)
 
 
 # ===================================================================
@@ -1167,18 +1209,56 @@ class MainPanel(Widget):
     def action_stage_all(self) -> None:
         if self._current_repo is None:
             return
-        msg = stage_all(self._current_repo)
-        self.app.notify(msg, timeout=2)
-        self._reload_tab("status")
-        self._loaded_tabs.discard("diff")
+        path = self._current_repo
+        changed = get_changed_files(path)
+        total = len(changed.get("unstaged", [])) + len(changed.get("untracked", []))
+
+        def _do() -> None:
+            msg = stage_all(path)
+            self.app.notify(msg, timeout=2)
+            self._reload_tab("status")
+            self._loaded_tabs.discard("diff")
+
+        if total > 20:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Stage all files?",
+                    body=f"[bold]{total}[/] files will be staged. Continue?",
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_unstage_all(self) -> None:
         if self._current_repo is None:
             return
-        msg = unstage_all(self._current_repo)
-        self.app.notify(msg, timeout=2)
-        self._reload_tab("status")
-        self._loaded_tabs.discard("diff")
+        path = self._current_repo
+        changed = get_changed_files(path)
+        total = len(changed.get("staged", []))
+
+        def _do() -> None:
+            msg = unstage_all(path)
+            self.app.notify(msg, timeout=2)
+            self._reload_tab("status")
+            self._loaded_tabs.discard("diff")
+
+        if total > 20:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Unstage all files?",
+                    body=f"[bold]{total}[/] files will be unstaged. Continue?",
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_open_commit(self) -> None:
         if self._current_repo is None:
@@ -1212,7 +1292,11 @@ class MainPanel(Widget):
             self._loaded_tabs.discard("status")
             self.post_message(self.ReloadRequested())
 
-        self.app.push_screen(NewBranchModal(), _after_create)
+        try:
+            existing = [b.name for b in get_branches(self._current_repo)]
+        except Exception:
+            existing = []
+        self.app.push_screen(NewBranchModal(existing=existing), _after_create)
 
     def action_stash_create(self) -> None:
         """Open the stash dialog (z key)."""
@@ -1231,13 +1315,35 @@ class MainPanel(Widget):
         self.app.push_screen(StashModal(), _after_stash)
 
     def action_stash_pop(self) -> None:
-        """Pop the top stash (Z key)."""
+        """Pop the top stash (Z key) — warn first if working tree is dirty."""
         if self._current_repo is None:
             return
-        result = stash_pop(self._current_repo)
-        self.app.notify(result, timeout=3)
-        self._reload_tab("status")
-        self.post_message(self.ReloadRequested())
+        path = self._current_repo
+
+        def _do() -> None:
+            result = stash_pop(path)
+            self.app.notify(result, timeout=3)
+            self._reload_tab("status")
+            self.post_message(self.ReloadRequested())
+
+        dirty, summary = is_dirty(path)
+        if dirty:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Pop stash over dirty tree?",
+                    body=(
+                        f"Working tree has [bold]{summary}[/]. "
+                        "Pop may produce merge conflicts. Continue?"
+                    ),
+                    danger=True,
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_fetch(self) -> None:
         """Fetch from all remotes (f key in Remotes tab) — runs in background."""
@@ -1251,25 +1357,64 @@ class MainPanel(Widget):
         )
 
     def action_pull(self) -> None:
-        """Pull from the tracking branch (p key in Remotes tab) — runs in background."""
+        """Pull from the tracking branch (p key) — confirm if tree is dirty."""
         if self._current_repo is None:
             return
-        self.app.notify("Pulling…", timeout=2)
         path = self._current_repo
-        self.run_worker(
-            lambda: ("pull", git_pull(path)),
-            thread=True, group="git_op", exclusive=False,
-        )
+
+        def _do() -> None:
+            self.app.notify("Pulling…", timeout=2)
+            self.run_worker(
+                lambda: ("pull", git_pull(path)),
+                thread=True, group="git_op", exclusive=False,
+            )
+
+        dirty, summary = is_dirty(path)
+        if dirty:
+            async def _after(ok: bool | None) -> None:
+                if ok:
+                    _do()
+            self.app.push_screen(
+                ConfirmModal(
+                    title="Pull over dirty tree?",
+                    body=(
+                        f"Working tree has [bold]{summary}[/]. "
+                        "Pull may fail or create conflicts. Continue?"
+                    ),
+                    danger=True,
+                ),
+                _after,
+            )
+        else:
+            _do()
 
     def action_push(self) -> None:
-        """Push to the tracking branch (P key in Remotes tab) — runs in background."""
+        """Push to the tracking branch (P key) — always confirm."""
         if self._current_repo is None:
             return
-        self.app.notify("Pushing…", timeout=2)
         path = self._current_repo
-        self.run_worker(
-            lambda: ("push", git_push(path)),
-            thread=True, group="git_op", exclusive=False,
+        repo_name = path.name
+
+        def _do() -> None:
+            self.app.notify("Pushing…", timeout=2)
+            self.run_worker(
+                lambda: ("push", git_push(path)),
+                thread=True, group="git_op", exclusive=False,
+            )
+
+        async def _after(ok: bool | None) -> None:
+            if ok:
+                _do()
+
+        self.app.push_screen(
+            ConfirmModal(
+                title=f"Push {repo_name}?",
+                body=(
+                    f"Push current branch from [bold #8b5cf6]{repo_name}[/] to its "
+                    "tracking remote?"
+                ),
+            ),
+            _after,
         )
 
     def on_worker_state_changed(self, event) -> None:
@@ -1290,10 +1435,9 @@ class MainPanel(Widget):
             self._load_tab(self._active_tab())
             self.post_message(self.ReloadRequested())
         elif event.state == WorkerState.ERROR:
-            self.app.notify(
-                f"Git operation failed: {event.worker.error}",
-                severity="error", timeout=5,
-            )
+            hint, detail = classify_error(event.worker.error)
+            self.app.notify(hint, severity="error", timeout=6)
+            _record_app_error(self.app, detail)
 
 
     def _delete_selected_branch(self) -> None:
@@ -1309,10 +1453,34 @@ class MainPanel(Widget):
                 severity="warning", timeout=3,
             )
             return
-        result = delete_branch(self._current_repo, item.branch_info.name)
-        self.app.notify(result, timeout=3)
-        self._reload_tab("branches")
-        self.post_message(self.ReloadRequested())
+        branch_name = item.branch_info.name
+        path = self._current_repo
+        phrase = f"delete {branch_name}"
+
+        async def _after(ok: bool | None) -> None:
+            if not ok:
+                return
+            result = delete_branch(path, branch_name)
+            if result.startswith("Error"):
+                hint, detail = classify_error(result)
+                self.app.notify(hint, severity="error", timeout=6)
+                _record_app_error(self.app, detail)
+            else:
+                self.app.notify(result, timeout=3)
+            self._reload_tab("branches")
+            self.post_message(self.ReloadRequested())
+
+        self.app.push_screen(
+            TypedConfirmModal(
+                title=f"Delete branch '{branch_name}'?",
+                body=(
+                    f"This will permanently delete branch "
+                    f"[bold #ef4444]{branch_name}[/] from this repo."
+                ),
+                phrase=phrase,
+            ),
+            _after,
+        )
 
     # ── Events ───────────────────────────────────────────────────────
 

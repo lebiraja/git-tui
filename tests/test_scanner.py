@@ -64,6 +64,15 @@ class TestSkipDirs:
     def test_contains_macos_public(self):
         assert "Public" in SKIP_DIRS
 
+    def test_contains_windows_appdata(self):
+        assert "AppData" in SKIP_DIRS
+
+    def test_contains_windows_videos(self):
+        assert "Videos" in SKIP_DIRS
+
+    def test_contains_linux_snap(self):
+        assert "snap" in SKIP_DIRS
+
     def test_is_a_set(self):
         assert isinstance(SKIP_DIRS, set)
 
@@ -229,6 +238,29 @@ class TestScanReposSkipping:
 
     def test_skips_movies(self, tmp_path):
         d = tmp_path / "Movies"
+        d.mkdir()
+        (d / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert d not in result
+
+    # Windows
+    def test_skips_appdata(self, tmp_path):
+        d = tmp_path / "AppData"
+        d.mkdir()
+        (d / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert d not in result
+
+    def test_skips_videos(self, tmp_path):
+        d = tmp_path / "Videos"
+        d.mkdir()
+        (d / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert d not in result
+
+    # Linux
+    def test_skips_snap(self, tmp_path):
+        d = tmp_path / "snap"
         d.mkdir()
         (d / ".git").mkdir()
         result = scan_repos(tmp_path)

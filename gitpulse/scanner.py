@@ -37,6 +37,11 @@ SKIP_DIRS = {
     "Music",
     "Pictures",
     "Public",
+    # Windows standard home-level directories — system/media data, never git repos
+    "AppData",        # like macOS Library: app caches, roaming profiles, local storage
+    "Videos",         # standard media folder (macOS equivalent is Movies)
+    # Linux common home-level directories — package runtimes, never git repos
+    "snap",           # Ubuntu/Debian snap package mounts
 }
 
 # Maximum directory depth the walker will descend. Prevents unbounded recursion

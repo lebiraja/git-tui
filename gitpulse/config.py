@@ -30,6 +30,7 @@ _EXAMPLE_CONTENT = """\
 
 [scan]
 # roots = ["~/projects", "~/work"]   # override --root; list of directories to scan
+# exclude_dirs = ["Google Drive", "Dropbox", "OneDrive", "mnt"]  # extra dirs to skip during scan
 
 [author]
 # emails = ["you@example.com"]       # used by digest mode; defaults to git config user.email
@@ -53,6 +54,7 @@ default_window = "1d"
 @dataclass
 class ScanConfig:
     roots: list[str] = field(default_factory=list)
+    exclude_dirs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +132,7 @@ def load(path: Path | None = None) -> GitPulseConfig:
     if "scan" in raw:
         s = raw["scan"]
         cfg.scan.roots = s.get("roots", [])
+        cfg.scan.exclude_dirs = list(s.get("exclude_dirs", []))
 
     if "author" in raw:
         a = raw["author"]

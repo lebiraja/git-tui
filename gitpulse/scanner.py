@@ -10,6 +10,7 @@ from pathlib import Path
 
 # Directories to skip during recursive scanning
 SKIP_DIRS = {
+    # Python / JS build artifacts
     "node_modules",
     "__pycache__",
     ".venv",
@@ -29,7 +30,18 @@ SKIP_DIRS = {
     "OneDrive",
     "Box",
     "iCloud Drive",
+    # macOS standard home-level directories — system/media data, never git repos
+    "Library",
+    "Applications",
+    "Movies",
+    "Music",
+    "Pictures",
+    "Public",
 }
+
+# Maximum directory depth the walker will descend. Prevents unbounded recursion
+# into deep trees (e.g. app containers, VM images, dataset archives).
+MAX_DEPTH = 8
 
 
 def scan_repos(root: Path, extra_skip: set[str] | None = None) -> list[Path]:
@@ -59,44 +71,57 @@ def scan_repos(root: Path, extra_skip: set[str] | None = None) -> list[Path]:
 
     skip = SKIP_DIRS | extra_skip if extra_skip else SKIP_DIRS
     repos: list[Path] = []
-    _walk(root, repos, skip)
+    _walk(str(root), repos, skip, 0)
     # No alphabetical sort here — the caller (_scan_worker) re-sorts by
     # commit timestamp, making a pre-sort wasted work.
     return repos
 
 
-def _walk(directory: Path, repos: list[Path], skip: set[str]) -> None:
+def _walk(directory: str, repos: list[Path], skip: set[str], depth: int) -> None:
     """
     Internal recursive walker.
 
-    If `directory` itself contains a .git folder, add it to `repos`
-    and stop recursing deeper. Otherwise, iterate children, skipping:
+    Uses os.scandir for speed — DirEntry.is_dir() reads the cached d_type
+    from the readdir result, avoiding a separate stat() call per entry.
+
+    Skips:
+      - directories deeper than MAX_DEPTH
       - hidden directories (name starts with ".")
       - names in `skip`
       - OS-level mount points (detected via os.path.ismount)
-      - any path that raises OSError when stat'd or listed
+      - any path that raises OSError when listed or stat'd
     """
+    if depth > MAX_DEPTH:
+        return
+
     try:
-        children = sorted(directory.iterdir())
+        with os.scandir(directory) as it:
+            entries = list(it)
     except OSError:
         # Catches PermissionError, TimeoutError (FUSE/network mounts), and any
         # other OS-level failure — skip this branch silently.
         return
 
-    # Check if this directory is a git repo
-    if (directory / ".git").is_dir():
-        repos.append(directory)
-        return  # Don't recurse into sub-repos
+    # Check if this directory is a git repo using the cached DirEntry result
+    for entry in entries:
+        if entry.name == ".git":
+            try:
+                if entry.is_dir():
+                    repos.append(Path(directory))
+                    return  # Don't recurse into sub-repos
+            except OSError:
+                pass
+            break
 
-    for child in children:
-        if child.name.startswith(".") or child.name in skip:
+    for entry in sorted(entries, key=lambda e: e.name):
+        if entry.name.startswith(".") or entry.name in skip:
             continue
         try:
-            is_dir = child.is_dir()
+            is_dir = entry.is_dir()
         except OSError:
             continue
         if not is_dir:
             continue
-        if os.path.ismount(str(child)):
+        if os.path.ismount(entry.path):
             continue
-        _walk(child, repos, skip)
+        _walk(entry.path, repos, skip, depth + 1)

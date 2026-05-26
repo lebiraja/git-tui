@@ -2,9 +2,10 @@
 Tests for gitpulse/scanner.py
 
 Covers:
-- SKIP_DIRS contents (cloud-sync names present)
+- SKIP_DIRS contents (cloud-sync + macOS system names present)
+- MAX_DEPTH limits recursion
 - OSError / TimeoutError / PermissionError are caught and skipped
-- child.is_dir() raising OSError is handled
+- DirEntry.is_dir() raising OSError is handled
 - os.path.ismount() True → directory skipped
 - .git discovery and no deeper recursion
 - Hidden dirs (dot-prefix) skipped
@@ -18,7 +19,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from gitpulse.scanner import SKIP_DIRS, scan_repos, _walk
+from gitpulse.scanner import SKIP_DIRS, MAX_DEPTH, scan_repos, _walk
 
 
 # ---------------------------------------------------------------------------
@@ -45,8 +46,58 @@ class TestSkipDirs:
     def test_contains_icloud_drive(self):
         assert "iCloud Drive" in SKIP_DIRS
 
+    def test_contains_macos_library(self):
+        assert "Library" in SKIP_DIRS
+
+    def test_contains_macos_applications(self):
+        assert "Applications" in SKIP_DIRS
+
+    def test_contains_macos_movies(self):
+        assert "Movies" in SKIP_DIRS
+
+    def test_contains_macos_music(self):
+        assert "Music" in SKIP_DIRS
+
+    def test_contains_macos_pictures(self):
+        assert "Pictures" in SKIP_DIRS
+
+    def test_contains_macos_public(self):
+        assert "Public" in SKIP_DIRS
+
     def test_is_a_set(self):
         assert isinstance(SKIP_DIRS, set)
+
+
+# ---------------------------------------------------------------------------
+# MAX_DEPTH
+# ---------------------------------------------------------------------------
+
+class TestMaxDepth:
+    def test_max_depth_is_positive_integer(self):
+        assert isinstance(MAX_DEPTH, int)
+        assert MAX_DEPTH > 0
+
+    def test_depth_limit_stops_recursion(self, tmp_path):
+        # Build a chain of dirs 2 levels deeper than MAX_DEPTH
+        current = tmp_path
+        for i in range(MAX_DEPTH + 2):
+            current = current / f"level_{i}"
+            current.mkdir()
+        # Place a repo at the very bottom (beyond MAX_DEPTH)
+        (current / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        # Should NOT find the repo — it's beyond MAX_DEPTH
+        assert current not in result
+
+    def test_repo_at_max_depth_is_found(self, tmp_path):
+        # Build a chain exactly at MAX_DEPTH
+        current = tmp_path
+        for i in range(MAX_DEPTH):
+            current = current / f"level_{i}"
+            current.mkdir()
+        (current / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert current in result
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +213,27 @@ class TestScanReposSkipping:
         result = scan_repos(tmp_path)
         assert db not in result
 
+    def test_skips_library(self, tmp_path):
+        lib = tmp_path / "Library"
+        lib.mkdir()
+        (lib / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert lib not in result
+
+    def test_skips_applications(self, tmp_path):
+        apps = tmp_path / "Applications"
+        apps.mkdir()
+        (apps / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert apps not in result
+
+    def test_skips_movies(self, tmp_path):
+        d = tmp_path / "Movies"
+        d.mkdir()
+        (d / ".git").mkdir()
+        result = scan_repos(tmp_path)
+        assert d not in result
+
     def test_extra_skip_excludes_named_dir(self, tmp_path):
         special = tmp_path / "BigArchive"
         special.mkdir()
@@ -216,49 +288,49 @@ class TestScanReposSkipping:
 # ---------------------------------------------------------------------------
 
 class TestWalkErrorHandling:
-    def test_permission_error_on_iterdir_is_skipped(self, tmp_path):
+    def test_permission_error_on_scandir_is_skipped(self, tmp_path):
         locked = tmp_path / "locked"
         locked.mkdir()
 
-        original = Path.iterdir
-        def fake_iterdir(self):
-            if self == locked:
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            if str(path) == str(locked):
                 raise PermissionError("Access denied")
-            return original(self)
+            return original_scandir(path)
 
-        with patch.object(Path, "iterdir", fake_iterdir):
+        with patch("os.scandir", fake_scandir):
             result = scan_repos(tmp_path)
         assert isinstance(result, list)
 
-    def test_timeout_error_on_iterdir_is_skipped(self, tmp_path):
+    def test_timeout_error_on_scandir_is_skipped(self, tmp_path):
         slow = tmp_path / "SlowMount"
         slow.mkdir()
 
-        original = Path.iterdir
-        def fake_iterdir(self):
-            if self == slow:
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            if str(path) == str(slow):
                 raise TimeoutError(60, "Operation timed out")
-            return original(self)
+            return original_scandir(path)
 
-        with patch.object(Path, "iterdir", fake_iterdir):
+        with patch("os.scandir", fake_scandir):
             result = scan_repos(tmp_path)
         assert isinstance(result, list)
 
-    def test_oserror_on_iterdir_is_skipped(self, tmp_path):
+    def test_oserror_on_scandir_is_skipped(self, tmp_path):
         broken = tmp_path / "broken"
         broken.mkdir()
 
-        original = Path.iterdir
-        def fake_iterdir(self):
-            if self == broken:
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            if str(path) == str(broken):
                 raise OSError("I/O error")
-            return original(self)
+            return original_scandir(path)
 
-        with patch.object(Path, "iterdir", fake_iterdir):
+        with patch("os.scandir", fake_scandir):
             result = scan_repos(tmp_path)
         assert isinstance(result, list)
 
-    def test_oserror_on_is_dir_is_skipped(self, tmp_path):
+    def test_oserror_on_is_dir_entry_is_skipped(self, tmp_path):
         repo = tmp_path / "good_repo"
         repo.mkdir()
         (repo / ".git").mkdir()
@@ -266,13 +338,23 @@ class TestWalkErrorHandling:
         bad_child = tmp_path / "bad_child"
         bad_child.mkdir()
 
-        original_is_dir = Path.is_dir
-        def fake_is_dir(self):
-            if self == bad_child:
-                raise OSError("stat failed")
-            return original_is_dir(self)
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            entries = list(original_scandir(path))
+            for e in entries:
+                if e.name == "bad_child":
+                    # Wrap to make is_dir() raise
+                    class BrokenEntry:
+                        name = e.name
+                        path = e.path
+                        def is_dir(self, **kw): raise OSError("stat failed")
+                    entries[entries.index(e)] = BrokenEntry()
+            class FakeCtx:
+                def __enter__(self_): return iter(entries)
+                def __exit__(self_, *a): pass
+            return FakeCtx()
 
-        with patch.object(Path, "is_dir", fake_is_dir):
+        with patch("os.scandir", fake_scandir):
             result = scan_repos(tmp_path)
         assert repo in result
 
@@ -283,13 +365,13 @@ class TestWalkErrorHandling:
         good.mkdir()
         (good / ".git").mkdir()
 
-        original = Path.iterdir
-        def fake_iterdir(self):
-            if self == slow:
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            if str(path) == str(slow):
                 raise TimeoutError(60, "Operation timed out")
-            return original(self)
+            return original_scandir(path)
 
-        with patch.object(Path, "iterdir", fake_iterdir):
+        with patch("os.scandir", fake_scandir):
             result = scan_repos(tmp_path)
 
         assert good in result
@@ -300,19 +382,19 @@ class TestWalkErrorHandling:
             d = tmp_path / f"broken_{i}"
             d.mkdir()
 
-        original = Path.iterdir
-        def fake_iterdir(self):
-            name = self.name
-            if name.startswith("broken_"):
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            import pathlib
+            if Path(path).name.startswith("broken_"):
                 raise TimeoutError(60, "Timed out")
-            return original(self)
+            return original_scandir(path)
 
-        with patch.object(Path, "iterdir", fake_iterdir):
+        with patch("os.scandir", fake_scandir):
             result = scan_repos(tmp_path)
         assert result == []
 
     def test_scan_still_finds_repos_after_timeout_in_sibling(self, tmp_path):
-        slow = tmp_path / "Google Drive"    # also in SKIP_DIRS, but let's not rely on that
+        slow = tmp_path / "FakeCloud"
         slow.mkdir()
         (slow / ".git").mkdir()
 
@@ -320,17 +402,14 @@ class TestWalkErrorHandling:
         repo.mkdir()
         (repo / ".git").mkdir()
 
-        # Even if Google Drive weren't in SKIP_DIRS, a TimeoutError on iterdir
-        # of its children would be caught and myproject would still be found.
-        original = Path.iterdir
-        def fake_iterdir(self):
-            if "Google Drive" in str(self) and self != tmp_path:
+        original_scandir = os.scandir
+        def fake_scandir(path):
+            if str(path) == str(slow):
                 raise TimeoutError(60, "Timed out")
-            return original(self)
+            return original_scandir(path)
 
-        with patch.object(Path, "iterdir", fake_iterdir):
-            # Remove Google Drive from skip to test the OSError fallback path
-            patched_skip = SKIP_DIRS - {"Google Drive"}
+        with patch("os.scandir", fake_scandir):
+            patched_skip = SKIP_DIRS - {"FakeCloud"}
             with patch("gitpulse.scanner.SKIP_DIRS", patched_skip):
                 result = scan_repos(tmp_path)
 
@@ -347,7 +426,7 @@ class TestWalkDirect:
         repo.mkdir()
         (repo / ".git").mkdir()
         repos = []
-        _walk(tmp_path, repos, set())
+        _walk(str(tmp_path), repos, set(), 0)
         assert repo in repos
 
     def test_walk_skips_name_in_skip_set(self, tmp_path):
@@ -355,7 +434,7 @@ class TestWalkDirect:
         skip_me.mkdir()
         (skip_me / ".git").mkdir()
         repos = []
-        _walk(tmp_path, repos, {"skip_me"})
+        _walk(str(tmp_path), repos, {"skip_me"}, 0)
         assert skip_me not in repos
 
     def test_walk_skips_dot_dirs(self, tmp_path):
@@ -363,7 +442,7 @@ class TestWalkDirect:
         hidden.mkdir()
         (hidden / ".git").mkdir()
         repos = []
-        _walk(tmp_path, repos, set())
+        _walk(str(tmp_path), repos, set(), 0)
         assert hidden not in repos
 
     def test_walk_stops_at_git_boundary(self, tmp_path):
@@ -374,6 +453,6 @@ class TestWalkDirect:
         inner.mkdir()
         (inner / ".git").mkdir()
         repos = []
-        _walk(tmp_path, repos, set())
+        _walk(str(tmp_path), repos, set(), 0)
         assert outer in repos
         assert inner not in repos

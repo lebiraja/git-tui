@@ -1114,7 +1114,15 @@ def classify_error(exc: BaseException | str) -> tuple[str, str]:
     - detached HEAD → checkout a branch
     - index/ref lock held → another git process running
     - network unreachable / could not resolve host → connectivity
+    - filesystem timeout (FUSE/network mount) → add to exclude_dirs
     """
+    if isinstance(exc, TimeoutError):
+        detail = str(exc)
+        return (
+            "Scan timed out — a network or cloud-sync directory may be mounted "
+            "under the scan root. Add it to scan.exclude_dirs in config.toml.",
+            detail,
+        )
     detail = str(exc)
     low = detail.lower()
     if "permission denied" in low or "authentication failed" in low or "could not read username" in low:

@@ -368,7 +368,9 @@ class GitPulseApp(App):
         Runs in a thread — no UI calls allowed here.
         Returns the sorted list of RepoInfo for the main thread to consume.
         """
-        paths = scan_repos(self.root_dir)
+        cfg = _config.get()
+        extra_skip = set(cfg.scan.exclude_dirs) if cfg.scan.exclude_dirs else None
+        paths = scan_repos(self.root_dir, extra_skip=extra_skip)
         infos = [get_repo_info(p) for p in paths]
         infos.sort(key=lambda r: r.last_commit_ts, reverse=True)
         return infos
@@ -729,7 +731,8 @@ def main() -> None:
             sys.exit(1)
 
         author_patterns = args.authors or cfg.author.emails or []
-        paths = _scan(root)
+        extra_skip = set(cfg.scan.exclude_dirs) if cfg.scan.exclude_dirs else None
+        paths = _scan(root, extra_skip=extra_skip)
         repos = [_gri(p) for p in paths]
         digest = _bd(repos, since_ts, author_patterns, max_workers=cfg.bulk.max_workers)
         print(_rm(digest))

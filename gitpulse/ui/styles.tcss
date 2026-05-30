@@ -261,6 +261,17 @@ DataTable > .datatable--odd-row {
     border-top: solid #1f2937;
 }
 
+/* Section headers for sparse panes (Branches / Tags) */
+#branch-header,
+#tags-header {
+    height: 1;
+    dock: top;
+    background: #111827;
+    color: #6b7280;
+    padding: 0 1;
+    border-bottom: solid #1f2937;
+}
+
 StatusFileItem {
     height: 1;
     padding: 0 1;

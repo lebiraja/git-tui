@@ -90,6 +90,9 @@ class BranchInfo:
     """Information about a local branch."""
     name: str
     is_current: bool
+    last_commit_ts: float = 0.0      # Unix ts of the branch tip
+    last_commit_msg: str = ""         # First line of the tip commit message
+    has_upstream: bool = False        # True if the branch tracks a remote
 
 
 @dataclass
@@ -396,10 +399,31 @@ def get_branches(path: Path) -> list[BranchInfo]:
         current = None
 
     for branch in repo.branches:
+        ts = 0.0
+        msg = ""
+        has_upstream = False
+        try:
+            tip = branch.commit
+            ts = float(tip.committed_date)
+            msg = tip.message.splitlines()[0] if tip.message else ""
+        except Exception:
+            pass
+        try:
+            has_upstream = branch.tracking_branch() is not None
+        except Exception:
+            has_upstream = False
         branches.append(
-            BranchInfo(name=branch.name, is_current=(branch.name == current))
+            BranchInfo(
+                name=branch.name,
+                is_current=(branch.name == current),
+                last_commit_ts=ts,
+                last_commit_msg=msg,
+                has_upstream=has_upstream,
+            )
         )
 
+    # Most-recently-active branch first; current branch always pinned to top.
+    branches.sort(key=lambda b: (not b.is_current, -b.last_commit_ts))
     return branches
 
 

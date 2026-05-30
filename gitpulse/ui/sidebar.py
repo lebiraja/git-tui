@@ -26,9 +26,9 @@ except ImportError:
 # Column layout — character widths, must match the header row below
 # ---------------------------------------------------------------------------
 
-_W_REPO = 13
-_W_BRANCH = 11
-_W_CHANGES = 2
+_W_REPO = 16
+_W_BRANCH = 15
+_W_CHANGES = 3
 
 # Palette
 _TEXT = "#d1d5db"
@@ -46,13 +46,18 @@ def _fit(value: str, width: int) -> str:
     return value.ljust(width)
 
 
-def _status_cell(info: RepoInfo) -> tuple[str, str]:
-    """Return (label, color) for a repo's status."""
+def _status_dot(info: RepoInfo) -> tuple[str, str]:
+    """Return (glyph, color) for a repo's status — a single compact dot.
+
+    The dot's colour carries the status (green=clean, yellow=modified,
+    red=untracked); the separate change-count column carries magnitude.
+    This frees the horizontal room the old "● Modified" label wasted.
+    """
     if info.status == RepoStatus.CLEAN:
-        return "✓ Clean", _GREEN
+        return "✓", _GREEN
     if info.status == RepoStatus.MODIFIED:
-        return "● Modified", _YELLOW
-    return "● Untracked", _RED
+        return "●", _YELLOW
+    return "●", _RED
 
 
 def column_header() -> Text:
@@ -63,9 +68,9 @@ def column_header() -> Text:
     t.append(" ")
     t.append(_fit("Branch", _W_BRANCH))
     t.append(" ")
-    t.append("Ch")
+    t.append("Δ".rjust(_W_CHANGES))
     t.append(" ")
-    t.append("Status")
+    t.append("·")
     return t
 
 
@@ -94,13 +99,14 @@ class RepoListItem(ListItem):
         # Branch
         t.append(_fit(info.branch, _W_BRANCH), style=_ACCENT)
         t.append(" ")
-        # Changes count
+        # Changes count — only show the number when there is something to show
         count = info.modified_count
-        t.append(str(count).rjust(_W_CHANGES), style=_MUTED if count == 0 else _TEXT)
+        count_str = (str(count) if count else "·").rjust(_W_CHANGES)
+        t.append(count_str, style=_MUTED if count == 0 else _TEXT)
         t.append(" ")
-        # Status
-        label, color = _status_cell(info)
-        t.append(label, style=color)
+        # Status — single colour-coded dot (colour == status)
+        glyph, color = _status_dot(info)
+        t.append(glyph, style=f"bold {color}")
 
         yield Static(t)
 

@@ -601,13 +601,7 @@ class FilePreviewModal(ModalScreen):
 class BranchListItem(ListItem):
     """A two-line branch row in the Branches tab: name + tip-commit context."""
 
-    DEFAULT_CSS = """
-    BranchListItem {
-        height: 2;
-        padding: 0 1;
-        border-bottom: solid #1f2937;
-    }
-    """
+    # Height / borders governed by styles.tcss (#branch-list / BranchListItem).
 
     def __init__(self, branch_info: BranchInfo, **kwargs) -> None:
         super().__init__(**kwargs)

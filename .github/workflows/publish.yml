@@ -55,7 +55,9 @@ jobs:
       - name: Commit version bump
         run: |
           git add pyproject.toml gitpulse/utils.py npm/package.json
-          git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
+          git commit \
+            -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]" \
+            -m "Co-Authored-By: lebiraja <130662829+lebiraja@users.noreply.github.com>"
           git push origin main
 
       - name: Create and push tag

@@ -599,25 +599,37 @@ class FilePreviewModal(ModalScreen):
 # ===================================================================
 
 class BranchListItem(ListItem):
-    """A single branch row in the Branches tab."""
+    """A two-line branch row in the Branches tab: name + tip-commit context."""
 
-    DEFAULT_CSS = """
-    BranchListItem {
-        height: auto;
-        padding: 0 1;
-    }
-    """
+    # Height / borders governed by styles.tcss (#branch-list / BranchListItem).
 
     def __init__(self, branch_info: BranchInfo, **kwargs) -> None:
         super().__init__(**kwargs)
         self.branch_info = branch_info
 
     def compose(self) -> ComposeResult:
-        if self.branch_info.is_current:
-            label = f"[bold #22c55e]● {self.branch_info.name}[/]  [dim italic](current)[/]"
+        b = self.branch_info
+        # Line 1 — marker + name + tags
+        if b.is_current:
+            line1 = f"[bold #22c55e]● {b.name}[/]  [dim italic](current)[/]"
         else:
-            label = f"[#d1d5db]  {self.branch_info.name}[/]"
-        yield Static(label, markup=True)
+            line1 = f"[#8b5cf6]  {b.name}[/]"
+        tags = []
+        if b.has_upstream:
+            tags.append("[#6b7280]⇅ tracked[/]")
+        else:
+            tags.append("[#6b7280]local-only[/]")
+        line1 += "   " + " ".join(tags)
+
+        # Line 2 — tip commit subject + relative time (muted)
+        rel = relative_time(b.last_commit_ts) if b.last_commit_ts else ""
+        msg = b.last_commit_msg[:48] + ("…" if len(b.last_commit_msg) > 48 else "")
+        if msg:
+            line2 = f"     [#6b7280]{msg}[/]  [dim]· {rel}[/]"
+        else:
+            line2 = "     [dim #6b7280]no commits[/]"
+
+        yield Static(f"{line1}\n{line2}", markup=True)
 
 
 # ===================================================================
@@ -848,6 +860,11 @@ class MainPanel(Widget):
 
             # ── Branches ──
             with Vertical(id="pane-branches", classes="content-pane"):
+                yield Static(
+                    "[#6b7280]Local branches[/]",
+                    id="branch-header",
+                    markup=True,
+                )
                 yield ListView(id="branch-list")
                 yield Static(
                     "[#6b7280]  Enter switch branch   n new branch   d delete branch[/]",
@@ -871,6 +888,11 @@ class MainPanel(Widget):
 
             # ── Tags ──
             with Vertical(id="pane-tags", classes="content-pane"):
+                yield Static(
+                    "[#6b7280]Tags[/]",
+                    id="tags-header",
+                    markup=True,
+                )
                 yield DataTable(id="tags-table")
 
             # ── Tree ──
@@ -1213,11 +1235,20 @@ class MainPanel(Widget):
         branch_list: ListView = self.query_one("#branch-list", ListView)
         branch_list.clear()
         branches = data["branches"]
+        header = self.query_one("#branch-header", Static)
         if not branches:
-            branch_list.append(ListItem(
-                Static("[dim italic]No branches found[/]", markup=True)
-            ))
+            header.update("[#6b7280]Local branches[/]")
+            branch_list.append(ListItem(Static(
+                "\n   [dim #6b7280]No local branches found.[/]\n"
+                "   [dim #6b7280]Press [#8b5cf6]n[/] to create one.[/]",
+                markup=True,
+            )))
             return
+        tracked = sum(1 for b in branches if b.has_upstream)
+        header.update(
+            f"[bold #d1d5db]Local branches[/]  "
+            f"[#6b7280]{len(branches)} total · {tracked} tracked[/]"
+        )
         for b in branches:
             branch_list.append(BranchListItem(b))
 
@@ -1246,9 +1277,14 @@ class MainPanel(Widget):
         table: DataTable = self.query_one("#tags-table", DataTable)
         table.clear()
         tags = data["tags"]
+        header = self.query_one("#tags-header", Static)
         if not tags:
-            table.add_row("—", "No tags", "", "")
+            header.update("[#6b7280]Tags[/]")
+            table.add_row("—", "This repo has no tags yet", "", "")
             return
+        header.update(
+            f"[bold #d1d5db]Tags[/]  [#6b7280]{len(tags)} shown[/]"
+        )
         for t in tags:
             table.add_row(t.name, t.date, t.tagger, t.message[:60])
 

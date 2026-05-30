@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Static
-from textual.containers import Container
+from textual.containers import Container, ScrollableContainer
 
 _SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Global", [
@@ -55,20 +55,21 @@ class HelpModal(ModalScreen):
         align: center middle;
     }
     #help-frame {
-        width: 70;
+        width: 72;
+        max-width: 90%;
         height: auto;
         max-height: 90%;
         padding: 1 2;
         background: #111827;
-        border: solid #8b5cf6;
-        border-title-align: left;
+        border: round #8b5cf6;
+        border-title-color: #8b5cf6;
+        border-title-style: bold;
+        border-title-align: center;
     }
-    #help-title {
-        text-style: bold;
-        color: #8b5cf6;
+    #help-scroll {
         width: 100%;
-        text-align: center;
-        margin-bottom: 1;
+        height: auto;
+        max-height: 32;
     }
     #help-body, #help-errors {
         width: 100%;
@@ -84,14 +85,18 @@ class HelpModal(ModalScreen):
         text-align: center;
         color: #6b7280;
         margin-top: 1;
+        border-top: solid #1f2937;
+        padding-top: 1;
     }
     """
 
     def compose(self) -> ComposeResult:
-        with Container(id="help-frame"):
-            yield Static("Keyboard Shortcuts", id="help-title", markup=False)
-            yield Static(self._body(), id="help-body", markup=True)
-            yield Static(self._errors_panel(), id="help-errors", markup=True)
+        frame = Container(id="help-frame")
+        frame.border_title = "Keyboard Shortcuts"
+        with frame:
+            with ScrollableContainer(id="help-scroll"):
+                yield Static(self._body(), id="help-body", markup=True)
+                yield Static(self._errors_panel(), id="help-errors", markup=True)
             yield Static("Esc / q to close", id="help-footer", markup=False)
 
     def _body(self) -> str:

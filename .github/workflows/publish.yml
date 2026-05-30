@@ -19,8 +19,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # A personal access token or the default GITHUB_TOKEN is required to push back
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Push back to a branch protected by the "Protect Main" ruleset.
+          # GITHUB_TOKEN authenticates as github-actions[bot], which is NOT on
+          # the ruleset bypass list and cannot be added via the UI, so the
+          # bump-commit / tag pushes were rejected (GH013 "Changes must be made
+          # through a pull request"). RELEASE_TOKEN is a PAT owned by a user on
+          # the bypass list; pushing with it inherits that bypass. Falls back to
+          # GITHUB_TOKEN if the secret is unset (e.g. on forks).
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5

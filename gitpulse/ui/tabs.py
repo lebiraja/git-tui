@@ -40,38 +40,21 @@ from textual.widgets import (
 )
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 
-try:
-    from gitpulse.git_ops import (
-        get_status, get_commits, get_branches,
-        get_stashes, get_remotes, get_tags, get_file_tree,
-        get_changed_files, get_file_diff, get_commit_diff,
-        stage_files, unstage_files, stage_all, unstage_all, commit_changes,
-        create_branch, delete_branch,
-        git_fetch, git_pull, git_push,
-        stash_create, stash_pop,
-        get_commit_graph, get_file_contents, get_tracked_files,
-        is_dirty, classify_error,
-        BranchInfo, RepoInfo,
-    )
-    from gitpulse.utils import relative_time
-    from gitpulse.ui.summary_cards import SummaryCards
-    from gitpulse.ui.confirm_modal import ConfirmModal, TypedConfirmModal
-except ImportError:
-    from git_ops import (  # type: ignore[no-redef]
-        get_status, get_commits, get_branches,
-        get_stashes, get_remotes, get_tags, get_file_tree,
-        get_changed_files, get_file_diff, get_commit_diff,
-        stage_files, unstage_files, stage_all, unstage_all, commit_changes,
-        create_branch, delete_branch,
-        git_fetch, git_pull, git_push,
-        stash_create, stash_pop,
-        get_commit_graph, get_file_contents, get_tracked_files,
-        is_dirty, classify_error,
-        BranchInfo, RepoInfo,
-    )
-    from utils import relative_time  # type: ignore[no-redef]
-    from ui.summary_cards import SummaryCards  # type: ignore[no-redef]
-    from ui.confirm_modal import ConfirmModal, TypedConfirmModal  # type: ignore[no-redef]
+from ..git_ops import (
+    get_status, get_commits, get_branches,
+    get_stashes, get_remotes, get_tags, get_file_tree,
+    get_changed_files, get_file_diff, get_commit_diff,
+    stage_files, unstage_files, stage_all, unstage_all, commit_changes,
+    create_branch, delete_branch,
+    git_fetch, git_pull, git_push,
+    stash_create, stash_pop,
+    get_commit_graph, get_file_contents, get_tracked_files,
+    is_dirty, classify_error,
+    BranchInfo, RepoInfo,
+)
+from ..utils import relative_time
+from .summary_cards import SummaryCards
+from .confirm_modal import ConfirmModal, TypedConfirmModal
 
 
 def _record_app_error(app, detail: str) -> None:
@@ -1077,31 +1060,48 @@ class MainPanel(Widget):
 
         self.query_one("#summary-cards", SummaryCards).update_cards(info, stashes)
 
-        self._fill_ws_list("#staged-list", fs.staged, "staged", "No changes staged")
-        self._fill_ws_list("#unstaged-list", fs.unstaged, "unstaged", "No unstaged changes")
-        self._fill_ws_list("#untracked-list", fs.untracked, "untracked", "No untracked files")
+        self._fill_ws_list(
+            "#staged-list", fs.staged, "staged",
+            "No changes staged", "Press s on a file to stage it",
+        )
+        self._fill_ws_list(
+            "#unstaged-list", fs.unstaged, "unstaged",
+            "No unstaged changes", "Tracked files match the index",
+        )
+        self._fill_ws_list(
+            "#untracked-list", fs.untracked, "untracked",
+            "No untracked files", "Everything here is tracked by git",
+        )
         self._fill_stash_list(stashes)
 
         # Right-hand panels — use the data already fetched in the worker.
         self._apply_status_panels(data)
 
-    def _empty_row(self, message: str) -> ListItem:
-        """Build a centered empty-state row for an empty workspace list."""
-        item = ListItem(Static(
-            f"[#22c55e]✓[/]\n[#d1d5db]{message}[/]\n"
-            f"[#6b7280]Working tree is clean[/]",
-            markup=True,
-        ))
+    def _empty_row(self, message: str, hint: str = "") -> ListItem:
+        """Build a centered empty-state row for an empty workspace list.
+
+        *hint* describes this list only. It must not claim the whole tree is
+        clean — an empty Staged list says nothing about untracked files.
+        """
+        body = f"[#22c55e]✓[/]\n[#d1d5db]{message}[/]"
+        if hint:
+            body += f"\n[#6b7280]{hint}[/]"
+        item = ListItem(Static(body, markup=True))
         item.add_class("empty-row")
         return item
 
     def _fill_ws_list(
-        self, list_id: str, files: list[str], status: str, empty_msg: str
+        self,
+        list_id: str,
+        files: list[str],
+        status: str,
+        empty_msg: str,
+        empty_hint: str = "",
     ) -> None:
         lv: ListView = self.query_one(list_id, ListView)
         lv.clear()
         if not files:
-            lv.append(self._empty_row(empty_msg))
+            lv.append(self._empty_row(empty_msg, empty_hint))
             return
         for f in files:
             lv.append(StatusFileItem(f, status))
@@ -1110,7 +1110,7 @@ class MainPanel(Widget):
         lv: ListView = self.query_one("#stashes-list", ListView)
         lv.clear()
         if not stashes:
-            lv.append(self._empty_row("No stashes"))
+            lv.append(self._empty_row("No stashes", "Press z to stash your changes"))
             return
         for s in stashes:
             t = Text(overflow="ellipsis", no_wrap=True)

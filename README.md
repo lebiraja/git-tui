@@ -21,15 +21,15 @@ local Git repository.
 
 **Demo** — GitPulse in action
 
-![GitPulse demo](ss/gitpulse.gif)
+![GitPulse demo](https://raw.githubusercontent.com/lebiraja/gitpulse/main/ss/gitpulse.gif)
 
 **Status tab** — repo summary cards, staged/unstaged/untracked/stash workspace, and the file tree / recent commits / remote summary side panels
 
-![Status tab](ss/status.png)
+![Status tab](https://raw.githubusercontent.com/lebiraja/gitpulse/main/ss/status.png)
 
 **Commits tab** — last N commits with color-coded insertions/deletions
 
-![Commits tab](ss/commits.png)
+![Commits tab](https://raw.githubusercontent.com/lebiraja/gitpulse/main/ss/commits.png)
 
 ## Installation
 
@@ -86,9 +86,35 @@ gitpulse --config path/to.toml     # use a custom config file
 gitpulse --version                 # print version
 
 # Activity digest (prints markdown, no TUI):
-gitpulse --digest --since 7d                 # last 7 days
-gitpulse --digest --since 2024-01-01         # since a date
-gitpulse --digest --author you@example.com   # filter by author
+gitpulse digest --since 7d                 # last 7 days
+gitpulse digest --since 2024-01-01         # since a date
+gitpulse digest --author you@example.com   # filter by author
+```
+
+### For scripts and coding agents
+
+Non-interactive subcommands emit machine-readable fleet state on stdout, so an
+agent can answer "which of my repos have unpushed work?" in a single call:
+
+```bash
+gitpulse scan --json                     # full fleet state as one JSON document
+gitpulse scan --json --dirty             # only repos with uncommitted changes
+gitpulse scan --json --ahead             # only repos with unpushed commits
+gitpulse scan --ndjson                   # one JSON object per line
+gitpulse context                         # Markdown context pack for an LLM prompt
+```
+
+The JSON envelope carries a `schema_version`, ISO-8601 UTC timestamps
+alongside raw epochs, and an `errors` array. Repos that could not be read are
+marked `"status": "unreadable"` with `"readable": false` — never silently
+reported as clean.
+
+GitPulse is also importable as a library. `gitpulse.api` never imports Textual:
+
+```python
+from gitpulse.api import scan_fleet
+
+unpushed = [r for r in scan_fleet("~/Projects") if r.ahead > 0]
 ```
 
 ## Features
@@ -116,7 +142,7 @@ Press `?` inside the app for the full cheat sheet.
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate the repo list |
+| `↑` / `↓` or `j` / `k` | Navigate the repo list |
 | `[` / `]` | Previous / next tab |
 | `/` | Search / filter repos |
 | `Space` / `*` | Toggle multi-select / select all |
@@ -125,6 +151,7 @@ Press `?` inside the app for the full cheat sheet.
 | `d` | Activity digest |
 | `:` | Bulk action palette |
 | `b` | Stale-branch cleanup |
+| `e` | Error log |
 | `?` | Help |
 | `q` | Quit |
 | `s` / `u` / `a` | Stage / unstage / stage-all (Status tab) |

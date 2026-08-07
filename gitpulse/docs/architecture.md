@@ -43,18 +43,47 @@ This document explains how GitPulse is structured, how data flows through the ap
 
 ## Module Responsibilities
 
+### `cli.py` — Command-Line Entry Point
+
+Owns argument parsing and the non-interactive subcommands. Bare `gitpulse`
+launches the TUI; `scan`, `context`, and `digest` print to stdout and exit.
+Textual is imported lazily inside `_run_tui()`, so the machine-readable
+subcommands never load the UI framework.
+
+### `api.py` — Public Library Surface
+
+The supported entry point for programmatic consumers (scripts, agent
+frameworks, a future MCP server). Read-only, and guaranteed never to import
+Textual — enforced by a test. Provides `scan_fleet()`, `scan_fleet_detailed()`,
+`repo_state()`, and the `fleet_to_dict()` / `repo_to_dict()` serializers that
+define the JSON schema (`SCHEMA_VERSION`).
+
+`is_unreadable()` flags repos where `get_repo_info` fell back to placeholder
+values, so an unreadable directory is emitted as `"status": "unreadable"`
+rather than being mistaken for a clean repo.
+
+### `context.py` — Markdown Context Pack
+
+Renders a fleet scan as state-first Markdown sized for an LLM context window:
+actionable repos first, clean repos collapsed to a name list, bounded by
+`max_repos`. Distinct from `digest.py`, which is author- and commit-centric.
+
 ### `main.py` — Application Orchestrator
 
 The root `GitPulseApp(App)` class owns:
 - The **only mutable repo state** (`_all_repos`, `repos`, `_selected_repo`)
-- The **scan lifecycle** (`_start_scan`, `_scan_worker`, worker state handling)
-- The **search/filter logic** (`_apply_filter`)
+- The **scan lifecycle** (`_start_scan`, `_scan_worker`, worker state handling).
+  `_scan_worker` fans `get_repo_info` out over a thread pool via
+  `parallel.run_parallel` — each call spawns ~7 git subprocesses, so enriching
+  a fleet serially dominated scan time.
+- The **search/filter logic** (`_apply_filter`, `_repopulate_preserving_selection`)
 - **Message routing** — listens for:
   - `RepoSidebar.RepoSelected`
   - `RepoSidebar.SearchChanged`
   - `MainPanel.BranchSwitchRequested`
   - `MainPanel.ReloadRequested` _(new)_ — triggers sidebar rescan after commit/branch ops
-- **Keybindings** (`q`, `r`, `/`, `Escape`)
+- **Keybindings** — every `Binding` carries a stable `id` (e.g. `app.refresh`)
+  so users can remap it; IDs are treated as API once released.
 
 Neither the sidebar nor the tabs know about each other. All cross-widget communication goes through the app.
 
@@ -144,7 +173,8 @@ on_mount()
   └── _start_scan()
         └── run_worker(_scan_worker, thread=True)
               ├── scanner.scan_repos(root)          → list[Path]
-              └── git_ops.get_repo_info(path) × N   → list[RepoInfo]
+              └── run_parallel(get_repo_info, paths) → list[RepoInfo]
+                    (per-repo failures captured, not raised)
 
 on_worker_state_changed(SUCCESS)
   ├── sidebar.populate(repos)
@@ -180,7 +210,14 @@ User types in search box
               └── post RepoSidebar.SearchChanged(query)
                     └── GitPulseApp.on_repo_sidebar_search_changed()
                           └── _apply_filter(query)
-                                └── sidebar.populate(filtered_repos)
+                                └── _repopulate_preserving_selection()
+                                      └── sidebar.populate(repos, keep_path=…)
+
+The active repo is only re-selected when it has been filtered out of view.
+`populate()` clears and refills the ListView, and those mutations queue
+`Highlighted` events that arrive afterwards; `on_list_view_highlighted` drops
+any event whose item is no longer in the current list, so a stale event cannot
+clobber the restored selection.
 ```
 
 ### Branch Switch

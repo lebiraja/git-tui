@@ -10,12 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-try:
-    from gitpulse.git_ops import BranchDetail, get_branch_details
-    from gitpulse.parallel import run_parallel
-except ImportError:
-    from git_ops import BranchDetail, get_branch_details  # type: ignore
-    from parallel import run_parallel  # type: ignore
+from .git_ops import BranchDetail, get_branch_details
+from .parallel import run_parallel
 
 
 def categorize(

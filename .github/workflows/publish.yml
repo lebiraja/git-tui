@@ -6,8 +6,35 @@ on:
       - main
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 matters: config.py branches between the tomli backport and
+        # stdlib tomllib at 3.11, so the backport path needs real coverage.
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest -q
+
   build-and-publish:
     runs-on: ubuntu-latest
+    # Never publish a build whose tests did not pass.
+    needs: test
     permissions:
       contents: write
     # Prevent infinite loop if the commit is from the bot itself

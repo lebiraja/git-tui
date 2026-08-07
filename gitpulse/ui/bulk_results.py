@@ -12,10 +12,7 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, ProgressBar, Static
 from textual.containers import Container
 
-try:
-    from gitpulse.git_ops import RepoInfo
-except ImportError:
-    from git_ops import RepoInfo  # type: ignore[no-redef]
+from ..git_ops import RepoInfo
 
 
 class BulkResultsScreen(ModalScreen):

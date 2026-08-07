@@ -47,7 +47,7 @@ gitpulse          # ✅ works
 
 ```toml
 [project.scripts]
-gitpulse = "gitpulse.main:main"
+gitpulse = "gitpulse.cli:main"
 ```
 
 This registers the `gitpulse` command in the venv's `bin/` directory when installed. It points directly to the `main()` function in `gitpulse/main.py`.
@@ -62,26 +62,23 @@ This tells setuptools to include the `gitpulse` package and its `gitpulse.ui` su
 
 ---
 
-## How Imports Work in Both Modes
+## How Imports Work
 
-`main.py` supports two run modes with a **try/except import block**:
+Modules use **relative imports** throughout:
 
 ```python
-try:
-    # Installed package mode: gitpulse command / python -m gitpulse
-    from gitpulse.scanner import scan_repos
-    from gitpulse.git_ops import get_repo_info, ...
-    from gitpulse.ui.sidebar import RepoSidebar
-    from gitpulse.ui.tabs import MainPanel
-except ImportError:
-    # Direct execution mode: python main.py
-    from scanner import scan_repos
-    from git_ops import get_repo_info, ...
-    from ui.sidebar import RepoSidebar
-    from ui.tabs import MainPanel
+from .scanner import scan_repos
+from .git_ops import get_repo_info
+from .ui.sidebar import RepoSidebar
 ```
 
-The CSS path is also made absolute so it works from any working directory:
+Earlier versions carried a `try`/`except ImportError` block in every module so
+that `python main.py` would work from inside the package directory. That
+fallback mutated `sys.path` at import time, which made `import gitpulse` unsafe
+inside another process, so it was removed. Run the package with `python -m
+gitpulse` (or the `gitpulse` console script) instead.
+
+The CSS path is made absolute so it works from any working directory:
 ```python
 CSS_PATH = str(Path(__file__).parent / "ui" / "styles.tcss")
 ```
@@ -92,15 +89,15 @@ CSS_PATH = str(Path(__file__).parent / "ui" / "styles.tcss")
 
 You can always run directly without installing:
 ```bash
-cd /path/to/git-tui/gitpulse
+cd /path/to/git-tui
 source .venv/bin/activate
-python main.py --root ~/projects
+python -m gitpulse --root ~/projects
 ```
 
 Or:
 ```bash
-cd /path/to/git-tui/gitpulse
-.venv/bin/python main.py --root ~/projects
+cd /path/to/git-tui
+.venv/bin/python -m gitpulse --root ~/projects
 ```
 
 ---

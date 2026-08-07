@@ -11,10 +11,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.widgets import Static
 
-try:
-    from gitpulse.git_ops import RepoInfo, RepoStatus, StashEntry
-except ImportError:
-    from git_ops import RepoInfo, RepoStatus, StashEntry  # type: ignore[no-redef]
+from ..git_ops import RepoInfo, RepoStatus, StashEntry
 
 _TEXT = "#d1d5db"
 _MUTED = "#6b7280"

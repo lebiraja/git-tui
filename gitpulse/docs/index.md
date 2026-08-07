@@ -33,10 +33,10 @@ source .venv/bin/activate      # Linux/macOS
 pip install -r requirements.txt
 
 # Run against your ~/projects directory
-python main.py
+python -m gitpulse
 
 # Run against a custom directory
-python main.py --root /path/to/your/repos
+python -m gitpulse --root /path/to/your/repos
 ```
 
 ---

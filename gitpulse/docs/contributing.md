@@ -27,10 +27,10 @@ source .venv/bin/activate   # Linux/macOS
 pip install -r requirements.txt
 
 # 4. Run the app (scan your ~/projects)
-python main.py
+python -m gitpulse
 
 # 5. Run against a specific folder (great for testing with a small set of repos)
-python main.py --root /tmp/test-repos
+python -m gitpulse --root /tmp/test-repos
 ```
 
 ### Creating test repos
@@ -45,7 +45,7 @@ for name in alpha beta gamma; do
   git commit --allow-empty -m "Initial commit"
   cd -
 done
-python main.py --root /tmp/test-repos
+python -m gitpulse --root /tmp/test-repos
 ```
 
 ---
@@ -249,7 +249,7 @@ if child.is_dir() and child.name not in SKIP_DIRS:
 
 Run with the `--dev` flag to open the Textual inspector:
 ```bash
-python main.py --dev
+python -m gitpulse --dev
 ```
 This opens a separate browser-based panel showing the widget tree, CSS, and events in real time.
 
@@ -257,7 +257,7 @@ This opens a separate browser-based panel showing the widget tree, CSS, and even
 
 Textual logs to stderr by default. Capture them:
 ```bash
-python main.py 2>debug.log
+python -m gitpulse 2>debug.log
 tail -f debug.log
 ```
 

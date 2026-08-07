@@ -12,14 +12,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-try:
-    from gitpulse.git_ops import RepoInfo, AuthorCommit, get_author_commits, get_author_email
-    from gitpulse.parallel import run_parallel
-    from gitpulse.utils import relative_time
-except ImportError:
-    from git_ops import RepoInfo, AuthorCommit, get_author_commits, get_author_email  # type: ignore
-    from parallel import run_parallel  # type: ignore
-    from utils import relative_time  # type: ignore
+from .git_ops import RepoInfo, AuthorCommit, get_author_commits, get_author_email
+from .parallel import run_parallel
+from .utils import relative_time
 
 
 @dataclass

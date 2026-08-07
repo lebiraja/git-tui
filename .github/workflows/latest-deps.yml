@@ -1,0 +1,33 @@
+name: Latest deps
+
+# The pinned upper bounds in pyproject.toml protect users from upstream
+# breaking changes, but they go stale silently. This job installs the newest
+# releases of Textual, Rich, and GitPython and runs the suite, so upstream
+# breakage surfaces as a failing scheduled build instead of a user bug report.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install with unpinned upstream deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install --upgrade textual rich gitpython
+
+      - name: Report resolved versions
+        run: pip list | grep -Ei 'textual|rich|gitpython'
+
+      - name: Run tests
+        run: pytest -q

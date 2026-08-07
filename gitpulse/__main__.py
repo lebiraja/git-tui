@@ -1,3 +1,3 @@
 """Allows running `python -m gitpulse` from anywhere."""
-from gitpulse.main import main
+from gitpulse.cli import main
 main()

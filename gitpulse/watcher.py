@@ -14,10 +14,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-try:
-    from gitpulse.git_ops import RepoInfo
-except ImportError:
-    from git_ops import RepoInfo  # type: ignore[no-redef]
+from .git_ops import RepoInfo
 
 
 def repo_signature(repo_path: Path) -> tuple[float, float, float, float]:

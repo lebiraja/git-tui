@@ -16,11 +16,13 @@ from textual.containers import Container, ScrollableContainer
 _SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Global", [
         ("/", "Search / filter repos"),
+        ("j / k", "Move down / up the repo list"),
         ("r", "Refresh — rescan all repos"),
         ("w", "Toggle watch mode"),
         ("d", "Activity digest"),
         (":", "Bulk action palette"),
         ("b", "Stale-branch cleanup"),
+        ("e", "Error log"),
         ("[ ]", "Previous / next tab"),
         ("?", "This help"),
         ("q", "Quit"),

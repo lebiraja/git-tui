@@ -1,69 +1,42 @@
 """
-main.py — GitPulse entry point.
+main.py — The GitPulse Textual application.
 
-Launches the Textual TUI application. Accepts CLI arguments to configure
-the scan root, number of commits to show, and version output.
-Repos are sorted by most recent commit date.
+Defines GitPulseApp, the root TUI. Argument parsing and the non-interactive
+subcommands live in gitpulse.cli; this module is imported only when the TUI is
+actually launched.
 
 Scanning runs in a background worker thread so the UI stays responsive.
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Input
+from textual.widgets import Footer, Input, ListView
 from textual.containers import Horizontal, Vertical
 from textual.worker import Worker, WorkerState
 
-# Support both installed-package imports (gitpulse.scanner) and
-# direct execution (python main.py) by trying package import first.
-try:
-    from gitpulse.scanner import scan_repos
-    from gitpulse.git_ops import (
-        get_repo_info, switch_branch, is_dirty, classify_error,
-        stash_create, RepoInfo,
-    )
-    from gitpulse.ui.sidebar import RepoSidebar
-    from gitpulse.ui.tabs import MainPanel
-    from gitpulse.ui.header import AppHeader, TAB_IDS
-    from gitpulse.ui.help_modal import HelpModal
-    from gitpulse.ui.fleet_status import FleetStatus
-    from gitpulse.ui.digest_screen import DigestScreen
-    from gitpulse.ui.command_palette import CommandPaletteModal
-    from gitpulse.ui.bulk_results import BulkResultsScreen
-    from gitpulse.ui.stale_screen import StaleScreen
-    from gitpulse.ui.confirm_modal import ConfirmModal, DirtyTreeModal
-    from gitpulse.utils import __version__, parse_since
-    from gitpulse import config as _config
-    from gitpulse import watcher as _watcher
-except ImportError:
-    # Running directly: python main.py
-    _THIS_DIR = Path(__file__).resolve().parent
-    if str(_THIS_DIR) not in sys.path:
-        sys.path.insert(0, str(_THIS_DIR))
-    from scanner import scan_repos  # type: ignore[no-redef]
-    from git_ops import (  # type: ignore[no-redef]
-        get_repo_info, switch_branch, is_dirty, classify_error,
-        stash_create, RepoInfo,
-    )
-    from ui.sidebar import RepoSidebar  # type: ignore[no-redef]
-    from ui.tabs import MainPanel  # type: ignore[no-redef]
-    from ui.header import AppHeader, TAB_IDS  # type: ignore[no-redef]
-    from ui.help_modal import HelpModal  # type: ignore[no-redef]
-    from ui.fleet_status import FleetStatus  # type: ignore[no-redef]
-    from ui.digest_screen import DigestScreen  # type: ignore[no-redef]
-    from ui.command_palette import CommandPaletteModal  # type: ignore[no-redef]
-    from ui.bulk_results import BulkResultsScreen  # type: ignore[no-redef]
-    from ui.stale_screen import StaleScreen  # type: ignore[no-redef]
-    from ui.confirm_modal import ConfirmModal, DirtyTreeModal  # type: ignore[no-redef]
-    from utils import __version__, parse_since  # type: ignore[no-redef]
-    import config as _config  # type: ignore[no-redef]
-    import watcher as _watcher  # type: ignore[no-redef]
+from . import config as _config
+from . import watcher as _watcher
+from .git_ops import (
+    RepoInfo, classify_error, get_repo_info, is_dirty, stash_create,
+    switch_branch,
+)
+from .parallel import run_parallel
+from .scanner import scan_repos
+from .ui.bulk_results import BulkResultsScreen
+from .ui.command_palette import CommandPaletteModal
+from .ui.confirm_modal import ConfirmModal, DirtyTreeModal
+from .ui.digest_screen import DigestScreen
+from .ui.error_log import ErrorLogScreen
+from .ui.fleet_status import FleetStatus
+from .ui.header import AppHeader, TAB_IDS
+from .ui.help_modal import HelpModal
+from .ui.sidebar import RepoSidebar
+from .ui.stale_screen import StaleScreen
+from .ui.tabs import MainPanel
 
 
 class GitPulseApp(App):
@@ -80,21 +53,27 @@ class GitPulseApp(App):
     TITLE = "GitPulse"
     SUB_TITLE = "Git Repo Dashboard"
 
+    # Every binding carries a stable `id` so users can remap it from
+    # config.toml ([keymap] section). IDs are API — renaming one breaks
+    # a user's keymap, so treat them as fixed once released.
     BINDINGS = [
-        Binding("q", "quit", "Quit", show=True),
-        Binding("r", "refresh", "Refresh", show=True),
-        Binding("w", "toggle_watch", "Watch", show=True),
-        Binding("d", "open_digest", "Digest", show=True),
-        Binding("colon", "open_palette", "Actions", show=True),
-        Binding("b", "open_stale", "Stale", show=True),
-        Binding("P", "push_all", "Push all", show=True),
-        Binding("slash", "search", "Search", show=True),
-        Binding("escape", "clear_search", "Clear", show=False),
-        Binding("tab", "focus_next", "Next", show=False),
-        Binding("shift+tab", "focus_previous", "Prev", show=False),
-        Binding("right_square_bracket", "next_tab", "Next Tab", show=False),
-        Binding("left_square_bracket", "prev_tab", "Prev Tab", show=False),
-        Binding("question_mark", "open_help", "Help", show=True),
+        Binding("q", "quit", "Quit", id="app.quit", show=True),
+        Binding("r", "refresh", "Refresh", id="app.refresh", show=True),
+        Binding("w", "toggle_watch", "Watch", id="app.toggle_watch", show=True),
+        Binding("d", "open_digest", "Digest", id="app.digest", show=True),
+        Binding("colon", "open_palette", "Actions", id="app.palette", show=True),
+        Binding("b", "open_stale", "Stale", id="app.stale", show=True),
+        Binding("P", "push_all", "Push all", id="app.push_all", show=True),
+        Binding("e", "open_error_log", "Errors", id="app.error_log", show=True),
+        Binding("slash", "search", "Search", id="app.search", show=True),
+        Binding("escape", "clear_search", "Clear", id="app.clear_search", show=False),
+        Binding("tab", "focus_next", "Next", id="app.focus_next", show=False),
+        Binding("shift+tab", "focus_previous", "Prev", id="app.focus_prev", show=False),
+        Binding("right_square_bracket", "next_tab", "Next Tab", id="app.next_tab", show=False),
+        Binding("left_square_bracket", "prev_tab", "Prev Tab", id="app.prev_tab", show=False),
+        Binding("j", "cursor_down", "Down", id="app.cursor_down", show=False),
+        Binding("k", "cursor_up", "Up", id="app.cursor_up", show=False),
+        Binding("question_mark", "open_help", "Help", id="app.help", show=True),
     ]
 
     def __init__(
@@ -117,6 +96,7 @@ class GitPulseApp(App):
         self._fleet_category: str = ""  # Active fleet-filter category ("" = none)
         self._error_log: list[str] = []  # Ring buffer of raw error details (cap 50)
         self._bulk_in_flight: int = 0    # Count of active bulk/git workers (for indicator)
+        self._scan_errors: list[str] = []  # Per-repo scan failures, drained on the main thread
 
     # -----------------------------------------------------------------
     # Layout
@@ -224,12 +204,10 @@ class GitPulseApp(App):
 
     def _dispatch_bulk(self, action_key: str, repos: list) -> None:
         """Fan out a bulk git operation over repos using a thread pool worker."""
-        try:
-            from gitpulse.git_ops import git_fetch, git_pull, git_push, git_gc, git_remote_prune, git_clean_dry, get_repo_info
-            from gitpulse.parallel import run_parallel
-        except ImportError:
-            from git_ops import git_fetch, git_pull, git_push, git_gc, git_remote_prune, git_clean_dry, get_repo_info  # type: ignore[no-redef]
-            from parallel import run_parallel  # type: ignore[no-redef]
+        from .git_ops import (
+            git_clean_dry, git_fetch, git_gc, git_pull, git_push,
+            git_remote_prune,
+        )
 
         _ops = {
             "fetch":   lambda r: git_fetch(r.path),
@@ -252,6 +230,11 @@ class GitPulseApp(App):
         def _worker() -> None:
             def _progress(completed, total, repo, result):
                 self.call_from_thread(results_screen.append_row, repo, result)
+                if isinstance(result, Exception):
+                    _, detail = classify_error(result)
+                    self.call_from_thread(
+                        self._record_error, f"{action_key} · {repo.name}: {detail}"
+                    )
 
             run_parallel(op, repos, max_workers=cfg.bulk.max_workers, on_progress=_progress)
             # After bulk refresh, trigger a rescan to update sidebar
@@ -348,6 +331,26 @@ class GitPulseApp(App):
         inp.value = ""
         self.query_one("#repo-list").focus()
 
+    def action_open_error_log(self) -> None:
+        """Show recorded error details (bound to 'e')."""
+        self.push_screen(ErrorLogScreen(self._error_log))
+
+    def _move_cursor(self, delta: int) -> None:
+        """Move the repo-list highlight by *delta* rows (vim j/k)."""
+        lv = self.query_one("#repo-list", ListView)
+        if not lv.children:
+            return
+        current = lv.index if lv.index is not None else 0
+        lv.index = max(0, min(current + delta, len(lv.children) - 1))
+
+    def action_cursor_down(self) -> None:
+        """Move down one repo (vim 'j')."""
+        self._move_cursor(1)
+
+    def action_cursor_up(self) -> None:
+        """Move up one repo (vim 'k')."""
+        self._move_cursor(-1)
+
     # -----------------------------------------------------------------
     # Background scan worker
     # -----------------------------------------------------------------
@@ -371,7 +374,21 @@ class GitPulseApp(App):
         cfg = _config.get()
         extra_skip = set(cfg.scan.exclude_dirs) if cfg.scan.exclude_dirs else None
         paths = scan_repos(self.root_dir, extra_skip=extra_skip)
-        infos = [get_repo_info(p) for p in paths]
+
+        # get_repo_info() spawns ~7 git subprocesses per repo, so enriching a
+        # fleet serially dominates scan time. Fan out over a bounded pool;
+        # run_parallel captures per-item exceptions so one unreadable repo
+        # can't fail the whole scan.
+        results = run_parallel(get_repo_info, paths, max_workers=cfg.bulk.max_workers)
+
+        infos: list[RepoInfo] = []
+        for path, result in results:
+            if isinstance(result, Exception):
+                _, detail = classify_error(result)
+                self._scan_errors.append(f"{path}: {detail}")
+            else:
+                infos.append(result)
+
         infos.sort(key=lambda r: r.last_commit_ts, reverse=True)
         return infos
 
@@ -406,6 +423,18 @@ class GitPulseApp(App):
             infos: list[RepoInfo] = event.worker.result
             self._all_repos = infos
             self.repos = list(infos)
+
+            # Drain per-repo scan failures collected in the worker thread.
+            if self._scan_errors:
+                failed = len(self._scan_errors)
+                for detail in self._scan_errors:
+                    self._record_error(detail)
+                self._scan_errors.clear()
+                self.notify(
+                    f"{failed} repo{'s' if failed != 1 else ''} could not be read — press e",
+                    severity="warning",
+                    timeout=5,
+                )
 
             # Snapshot signatures for watch mode
             self._signatures = _watcher.snapshot(infos)
@@ -503,20 +532,32 @@ class GitPulseApp(App):
         main: MainPanel = self.query_one("#main-panel", MainPanel)
         main.load_repo(repo_info.path, repo_info)
 
+    def _repopulate_preserving_selection(self) -> None:
+        """Refresh the sidebar from ``self.repos``, keeping the current repo selected.
+
+        The active repo only changes when it has been filtered out of view; a
+        narrowing filter must not yank the user away from what they're reading
+        (each re-select also re-triggers the main panel's tab loaders).
+        """
+        keep = self._selected_repo.path if self._selected_repo else None
+        still_visible = keep is not None and any(r.path == keep for r in self.repos)
+
+        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
+        sidebar.populate(self.repos, keep_path=keep if still_visible else None)
+
+        if not still_visible and self.repos:
+            self._select_repo(self.repos[0])
+
     def _apply_filter(self, query: str) -> None:
         """Filter the repo list by name, preserving any active fleet filter."""
         q = query.strip().lower()
         base = self._fleet_filtered_repos()
         self.repos = [r for r in base if q in r.name.lower()] if q else list(base)
-
-        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
-        sidebar.populate(self.repos)
-        if self.repos:
-            self._select_repo(self.repos[0])
+        self._repopulate_preserving_selection()
 
     def _fleet_filtered_repos(self) -> list[RepoInfo]:
         """Return _all_repos filtered by the current fleet category (if any)."""
-        from gitpulse.git_ops import RepoStatus  # avoid circular at module level
+        from .git_ops import RepoStatus
         _predicates = {
             "dirty":   lambda r: r.status != RepoStatus.CLEAN,
             "behind":  lambda r: r.behind > 0,
@@ -533,15 +574,10 @@ class GitPulseApp(App):
         """Filter sidebar to repos matching a fleet-status category and highlight chip."""
         self._fleet_category = category
         self.repos = self._fleet_filtered_repos()
-
-        sidebar: RepoSidebar = self.query_one("#sidebar-container", RepoSidebar)
-        sidebar.populate(self.repos)
+        self._repopulate_preserving_selection()
 
         fleet: FleetStatus = self.query_one("#fleet-status", FleetStatus)
         fleet.set_active_filter(category)
-
-        if self.repos:
-            self._select_repo(self.repos[0])
 
     # -----------------------------------------------------------------
     # Message handlers
@@ -632,115 +668,14 @@ class GitPulseApp(App):
 
 
 # -----------------------------------------------------------------------
-# CLI entry point
+# Entry point
 # -----------------------------------------------------------------------
 
-def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(
-        prog="gitpulse",
-        description="GitPulse — Git Repo Dashboard TUI",
-    )
-    parser.add_argument(
-        "--root",
-        type=str,
-        default=None,
-        help="Root directory to scan for git repos (default: first entry in config scan.roots, or current directory)",
-    )
-    parser.add_argument(
-        "--commits",
-        type=int,
-        default=10,
-        metavar="N",
-        help="Number of commits to display per repo (default: 10)",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        metavar="PATH",
-        help="Path to config.toml (default: ~/.config/gitpulse/config.toml)",
-    )
-    parser.add_argument(
-        "--no-watch",
-        action="store_true",
-        default=False,
-        help="Disable live watch mode (default: enabled)",
-    )
-    parser.add_argument(
-        "--digest",
-        action="store_true",
-        default=False,
-        help="Print activity digest as markdown and exit (no TUI)",
-    )
-    parser.add_argument(
-        "--since",
-        type=str,
-        default=None,
-        metavar="SPEC",
-        help="Time window for --digest: 1d, 7d, 30d, yesterday, YYYY-MM-DD (default: 1d)",
-    )
-    parser.add_argument(
-        "--author",
-        action="append",
-        dest="authors",
-        metavar="EMAIL",
-        default=None,
-        help="Author email filter for --digest (repeatable; default: git config user.email)",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"gitpulse {__version__}",
-    )
-    return parser.parse_args()
-
-
 def main() -> None:
-    """Entry point — called by both `python main.py` and the `gitpulse` command."""
-    args = parse_args()
+    """Backwards-compatible shim — the CLI lives in gitpulse.cli."""
+    from .cli import main as _cli_main
 
-    # Load config first so scan.roots can influence the default root.
-    if args.config:
-        _config.load(Path(args.config))
-    cfg = _config.get()
-
-    if args.root is not None:
-        root = Path(args.root).expanduser().resolve()
-    elif cfg.scan.roots:
-        root = Path(cfg.scan.roots[0]).expanduser().resolve()
-    else:
-        root = Path(".").resolve()
-
-    if not root.is_dir():
-        print(f"Error: '{root}' is not a valid directory.", file=sys.stderr)
-        sys.exit(1)
-
-    if args.digest:
-        # CLI digest mode — no TUI
-        from gitpulse.scanner import scan_repos as _scan
-        from gitpulse.git_ops import get_repo_info as _gri
-        from gitpulse.digest import build_digest as _bd, render_markdown as _rm
-        from gitpulse.utils import parse_since as _ps
-
-        since_spec = args.since or cfg.digest.default_window
-        try:
-            since_ts = _ps(since_spec)
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-
-        author_patterns = args.authors or cfg.author.emails or []
-        extra_skip = set(cfg.scan.exclude_dirs) if cfg.scan.exclude_dirs else None
-        paths = _scan(root, extra_skip=extra_skip)
-        repos = [_gri(p) for p in paths]
-        digest = _bd(repos, since_ts, author_patterns, max_workers=cfg.bulk.max_workers)
-        print(_rm(digest))
-        return
-
-    watch_enabled = cfg.watch.enabled and not args.no_watch
-    app = GitPulseApp(root_dir=root, commits=args.commits, watch=watch_enabled)
-    app.run()
+    _cli_main()
 
 
 if __name__ == "__main__":

@@ -15,18 +15,11 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Input, Static, Button, TabbedContent, TabPane
 from textual.containers import Container, Vertical, Horizontal
 
-try:
-    from gitpulse.git_ops import BranchDetail, delete_branch
-    from gitpulse.stale import gather_all_repos, categorize
-    from gitpulse.parallel import run_parallel
-    from gitpulse.utils import relative_time
-    from gitpulse.ui.confirm_modal import TypedConfirmModal
-except ImportError:
-    from git_ops import BranchDetail, delete_branch  # type: ignore
-    from stale import gather_all_repos, categorize  # type: ignore
-    from parallel import run_parallel  # type: ignore
-    from utils import relative_time  # type: ignore
-    from ui.confirm_modal import TypedConfirmModal  # type: ignore
+from ..git_ops import BranchDetail, delete_branch
+from ..stale import gather_all_repos, categorize
+from ..parallel import run_parallel
+from ..utils import relative_time
+from .confirm_modal import TypedConfirmModal
 
 
 class StaleScreen(ModalScreen):

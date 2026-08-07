@@ -17,10 +17,7 @@ from pathlib import Path
 
 from git import Repo, InvalidGitRepositoryError, GitCommandError
 
-try:
-    from gitpulse.utils import relative_time
-except ImportError:
-    from utils import relative_time  # type: ignore[no-redef]
+from .utils import relative_time
 
 
 # ---------------------------------------------------------------------------

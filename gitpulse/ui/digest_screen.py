@@ -16,14 +16,9 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, Button
 from textual.containers import Container, ScrollableContainer, Horizontal
 
-try:
-    from gitpulse.digest import Digest, build_digest, render_markdown
-    from gitpulse.git_ops import RepoInfo
-    from gitpulse.utils import parse_since, relative_time
-except ImportError:
-    from digest import Digest, build_digest, render_markdown  # type: ignore
-    from git_ops import RepoInfo  # type: ignore
-    from utils import parse_since, relative_time  # type: ignore
+from ..digest import Digest, build_digest, render_markdown
+from ..git_ops import RepoInfo
+from ..utils import parse_since, relative_time
 
 
 class DigestScreen(ModalScreen):

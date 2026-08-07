@@ -30,10 +30,13 @@ Screen {
     height: 1fr;
 }
 
+/* Proportional so the repo/branch columns gain room on wide terminals and
+   stay readable on narrow ones; sidebar.py derives its column widths from
+   the resulting width at runtime. */
 #sidebar-column {
-    width: 46;
-    min-width: 38;
-    max-width: 54;
+    width: 32%;
+    min-width: 34;
+    max-width: 64;
     background: #111827;
     border-right: solid #1f2937;
 }
@@ -540,24 +543,23 @@ Button.-error {
 }
 
 /* ---------- Fleet status strip ---------- */
+/* Six counters must fit a sidebar that can be as narrow as ~31 columns, so
+   labels are abbreviated (tooltips carry the full meaning) and chips size to
+   their own content with a single separating space. */
 FleetStatus {
     height: 1;
     background: #111827;
     layout: horizontal;
     align: left middle;
-    padding: 0 1;
-}
-
-FleetStatus > Static#fleet-label {
-    width: auto;
-    color: #6b7280;
-    margin-right: 1;
+    padding: 0;
+    overflow: hidden;
 }
 
 FleetChip {
     width: auto;
     height: 1;
-    padding: 0 1;
+    padding: 0;
+    margin-right: 1;
     color: #6b7280;
 }
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitpulse-tui"
-version = "1.2.15"
+version = "1.2.16"
 description = "Git Repo Dashboard TUI — live status, commits, diffs, and branches in your terminal"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

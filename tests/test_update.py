@@ -16,6 +16,20 @@ from gitpulse import update as up
 from gitpulse.update import Install, is_newer, run_update
 
 
+class _Tty:
+    """Stand-in stream that claims to be a terminal."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+class _NoTty:
+    """Stand-in stream that is not a terminal (pipe, cron job)."""
+
+    def isatty(self) -> bool:
+        return False
+
+
 class TestVersionComparison:
     @pytest.mark.parametrize(
         "latest,current,expected",
@@ -51,21 +65,78 @@ class TestDetectInstall:
         assert install.command is not None
         assert "--upgrade" in install.command
 
-    def test_npm_install_refuses_to_self_upgrade(self, monkeypatch, tmp_path):
-        """pip-upgrading the npm venv would be undone on the next launch."""
-        # Arrange — pretend this interpreter lives in the npm-managed venv
+    def test_npm_install_upgrades_the_npm_package(self, monkeypatch, tmp_path):
+        """The npm package must be upgraded, not the venv it pins."""
+        # Arrange — pretend this interpreter lives in the npm-managed venv,
+        # in a writable global prefix so no sudo is involved.
         npm_root = tmp_path / "venv"
         npm_root.mkdir()
         monkeypatch.setattr(up, "_npm_venv_root", lambda: npm_root)
         monkeypatch.setattr(up.sys, "prefix", str(npm_root))
+        monkeypatch.setattr(up.shutil, "which", lambda name: f"/usr/bin/{name}")
+        monkeypatch.setattr(up, "_npm_global_root", lambda: tmp_path)
 
         # Act
         install = up.detect_install()
 
-        # Assert
+        # Assert — a real command, not a copy-paste hint
         assert install.method == up.NPM
-        assert install.command is None
-        assert "npm install -g gitpulse-tui@latest" in install.manual_hint
+        assert install.command is not None
+        assert install.command[-1] == "gitpulse-tui@latest"
+        assert "install" in install.command
+
+    def test_npm_upgrade_uses_sudo_when_prefix_needs_root(self, monkeypatch, tmp_path):
+        """A root-owned global prefix should prompt for a password, not give up."""
+        # Arrange — unwritable prefix, a terminal available, not already root
+        monkeypatch.setattr(up.shutil, "which", lambda name: f"/usr/bin/{name}")
+        monkeypatch.setattr(up, "_npm_global_root", lambda: tmp_path / "root-owned")
+        monkeypatch.setattr(up.os, "access", lambda *a, **k: False)
+        monkeypatch.setattr(up.os, "geteuid", lambda: 1000)
+        monkeypatch.setattr(up.sys, "stdin", _Tty())
+        monkeypatch.setattr(up.sys, "stderr", _Tty())
+
+        # Act
+        command = up._npm_upgrade_command()
+
+        # Assert — plain sudo, so it can prompt interactively
+        assert command is not None
+        assert command[0].endswith("sudo")
+        assert "-n" not in command
+
+    def test_npm_upgrade_never_hangs_without_a_terminal(self, monkeypatch, tmp_path):
+        """With no TTY, sudo would block forever waiting for a password."""
+        # Arrange
+        monkeypatch.setattr(up.shutil, "which", lambda name: f"/usr/bin/{name}")
+        monkeypatch.setattr(up, "_npm_global_root", lambda: tmp_path / "root-owned")
+        monkeypatch.setattr(up.os, "access", lambda *a, **k: False)
+        monkeypatch.setattr(up.os, "geteuid", lambda: 1000)
+        monkeypatch.setattr(up.sys, "stdin", _NoTty())
+        monkeypatch.setattr(up.sys, "stderr", _NoTty())
+
+        class Failed:
+            returncode = 1
+
+        monkeypatch.setattr(up.subprocess, "run", lambda *a, **k: Failed())
+
+        # Act
+        command = up._npm_upgrade_command()
+
+        # Assert — refuses rather than hanging on a password prompt
+        assert command is None
+
+    def test_npm_upgrade_skips_sudo_when_already_root(self, monkeypatch, tmp_path):
+        # Arrange
+        monkeypatch.setattr(up.shutil, "which", lambda name: f"/usr/bin/{name}")
+        monkeypatch.setattr(up, "_npm_global_root", lambda: tmp_path / "root-owned")
+        monkeypatch.setattr(up.os, "access", lambda *a, **k: False)
+        monkeypatch.setattr(up.os, "geteuid", lambda: 0)
+
+        # Act
+        command = up._npm_upgrade_command()
+
+        # Assert
+        assert command is not None
+        assert not command[0].endswith("sudo")
 
     def test_externally_managed_python_is_not_touched(self, monkeypatch, tmp_path):
         """PEP 668 marks distro Pythons where pip must not write."""
@@ -180,3 +251,33 @@ class TestRunUpdate:
         # Assert
         assert code == 0
         assert "newer or unpublished" in capsys.readouterr().out
+
+    def test_npm_upgrade_syncs_the_pinned_venv(self, monkeypatch, capsys):
+        """After upgrading the npm package its venv is still on the old pin."""
+        # Arrange
+        calls = []
+
+        class Ok:
+            returncode = 0
+
+        def fake_run(cmd, *a, **k):
+            calls.append(cmd)
+            return Ok()
+
+        monkeypatch.setattr(up, "__version__", "1.0.0")
+        monkeypatch.setattr(up, "fetch_latest_version", lambda timeout=5.0: "9.9.9")
+        monkeypatch.setattr(up.subprocess, "run", fake_run)
+        monkeypatch.setattr(up.shutil, "which", lambda name: f"/usr/bin/{name}")
+        monkeypatch.setattr(
+            up, "detect_install",
+            lambda: Install(up.NPM, ["/usr/bin/npm", "install"], "hint", "/x"),
+        )
+
+        # Act
+        code = run_update()
+
+        # Assert — the wrapper is invoked afterwards to rebuild its venv
+        assert code == 0
+        assert any("gitpulse" in str(c[0]) for c in calls[1:]), (
+            "npm upgrade did not trigger a venv sync"
+        )

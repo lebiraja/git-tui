@@ -85,6 +85,9 @@ gitpulse --no-watch                # disable live watch mode
 gitpulse --config path/to.toml     # use a custom config file
 gitpulse --version                 # print version
 
+gitpulse --update                  # upgrade to the latest release
+gitpulse --check-update            # report if one exists, install nothing
+
 # Activity digest (prints markdown, no TUI):
 gitpulse digest --since 7d                 # last 7 days
 gitpulse digest --since 2024-01-01         # since a date
@@ -139,6 +142,31 @@ Both documents cover the same ground: the JSON schema, how to narrow with
 `--dirty` / `--ahead`, and the failure modes worth knowing — chiefly that
 `"readable": false` means *unknown*, not clean, and that `ahead: 0` does not
 prove a branch is pushed when it has no upstream.
+
+### Staying up to date
+
+```bash
+gitpulse --update          # check PyPI, then upgrade in place
+gitpulse --check-update    # report only — installs nothing
+```
+
+`--update` detects how GitPulse was installed and runs the right command for
+that channel. It will **not** upgrade in place when doing so would break the
+install — it prints the correct command instead:
+
+| Install method | Behaviour |
+|---|---|
+| virtualenv | upgrades in place with `pip` |
+| pipx | runs `pipx upgrade gitpulse-tui` |
+| npm | prints `npm install -g gitpulse-tui@latest` |
+| OS-managed Python ([PEP 668](https://peps.python.org/pep-0668/)) | prints a `pipx` command |
+
+npm installs are deliberately excluded from self-upgrade: the wrapper pins an
+exact Python package version and would silently revert a `pip` upgrade on the
+next launch.
+
+GitPulse never checks for updates on its own — no background network calls, no
+telemetry. The check happens only when you ask for it.
 
 ## Features
 

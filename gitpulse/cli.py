@@ -23,13 +23,104 @@ from pathlib import Path
 from . import config as _config
 from .utils import __version__
 
-_TIME_SPEC_HELP = "1d, 7d, 30d, yesterday, today, or YYYY-MM-DD"
+_TIME_SPEC_HELP = "1d, 7d, 2w, 4h, yesterday, today, or YYYY-MM-DD"
+
+_MAIN_EPILOG = """\
+examples:
+  gitpulse                            launch the dashboard for the configured root
+  gitpulse --root ~/Projects          launch the dashboard for a specific directory
+
+  gitpulse scan --json                fleet state as JSON (for scripts and agents)
+  gitpulse scan --json --ahead        only repos with unpushed commits
+  gitpulse context                    fleet state as Markdown, for an LLM prompt
+  gitpulse digest --since 7d          what you committed in the last week
+
+dashboard keys:
+  /  filter repos          j / k or arrows  move            [ ]  switch tab
+  r  rescan                Space / *        select / all    :    bulk actions
+  w  toggle watch mode     d  digest        b  stale branches
+  e  error log             ?  help          q  quit
+
+configuration:
+  ~/.config/gitpulse/config.toml  — scan roots, excluded dirs, author emails,
+  watch interval, stale threshold, worker count. CLI flags always win.
+  An annotated example is written to config.toml.example on first run.
+
+Full documentation: https://github.com/lebiraja/gitpulse
+"""
+
+_SCAN_EPILOG = """\
+examples:
+  gitpulse scan --json                       every repo, indented JSON
+  gitpulse scan --json --indent 0            compact — fewer tokens for an agent
+  gitpulse scan --json --dirty               only repos with uncommitted changes
+  gitpulse scan --json --ahead               only repos with unpushed commits
+  gitpulse scan --ndjson                     one JSON object per line
+  gitpulse scan --root ~/work --json | jq '.repos[] | select(.behind > 0) | .name'
+
+output:
+  A JSON envelope with schema_version, scanned_at (ISO-8601 UTC), root,
+  repo_count, repos[], and errors[]. Each repo carries name, path, branch,
+  status, readable, modified_count, ahead, behind, stash_count,
+  has_stale_branches, last_commit{ts,iso,message}, total_commits,
+  contributor_count, and commit_activity[] (commits per week, 7 weeks).
+
+  status is one of: clean, modified, untracked, unreadable.
+
+  A repo with "readable": false could not be inspected — its state is unknown,
+  NOT clean. Check the errors[] array too; if it is non-empty the picture is
+  incomplete.
+
+  Only JSON goes to stdout, so it is safe to pipe directly into a parser.
+  Exit status is 0 even when repos are dirty; 1 means the scan itself failed.
+"""
+
+_CONTEXT_EPILOG = """\
+examples:
+  gitpulse context                     full fleet summary
+  gitpulse context --max-repos 15      cap each section on a large fleet
+  gitpulse context > /tmp/fleet.md     save it to paste into a prompt
+
+output:
+  Markdown ordered by what needs action: repos needing attention first, an
+  unpushed-work table, stale branches, then clean repos collapsed to a single
+  name list. Repos that could not be read are listed separately and explicitly
+  marked as unknown rather than clean.
+
+  Use this when a human will read the summary. Use `scan --json` when a program
+  will parse it.
+"""
+
+_DIGEST_EPILOG = """\
+examples:
+  gitpulse digest --since 7d                     your commits this week
+  gitpulse digest --since yesterday              since yesterday midnight
+  gitpulse digest --since 2026-01-01             since a specific date
+  gitpulse digest --author you@example.com       filter to one author
+  gitpulse digest --author a@x.com --author b@x.com   several authors
+
+output:
+  Markdown grouped by repository, with per-commit insertion/deletion counts and
+  a fleet-wide total. Answers "what did I do", where `context` answers "what is
+  the state right now".
+
+  With no --author, the digest uses author.emails from config.toml, falling back
+  to each repository's own git config user.email.
+"""
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gitpulse",
-        description="GitPulse — Git repo fleet dashboard. Run without arguments for the TUI.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "GitPulse — a dashboard for every git repository on your machine.\n\n"
+            "Scans a directory tree for local git repos and shows which have "
+            "uncommitted\nchanges, unpushed commits, stashes, or stale branches. "
+            "Run with no arguments\nfor the interactive dashboard, or use a "
+            "subcommand for scriptable output."
+        ),
+        epilog=_MAIN_EPILOG,
     )
     parser.add_argument(
         "--version", action="version", version=f"gitpulse {__version__}"
@@ -60,24 +151,41 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Bare `gitpulse` accepts the common options plus the TUI-only ones.
     add_common(parser)
-    parser.add_argument(
-        "--commits", type=int, default=10, metavar="N",
-        help="Commits to display per repo in the TUI (default: 10)",
+    tui_group = parser.add_argument_group(
+        "dashboard options", "Only apply when launching the interactive TUI"
     )
-    parser.add_argument(
+    tui_group.add_argument(
+        "--commits", type=int, default=10, metavar="N",
+        help="Commits to show per repo in the Commits tab (default: 10)",
+    )
+    tui_group.add_argument(
         "--no-watch", action="store_true", default=False,
-        help="Disable live watch mode",
+        help="Disable live auto-refresh when repos change on disk",
     )
 
     common = argparse.ArgumentParser(add_help=False)
     add_common(common)
 
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(
+        dest="command",
+        title="subcommands",
+        metavar="{scan,context,digest}",
+        description=(
+            "Non-interactive output for scripts, pipelines, and coding agents.\n"
+            "Run `gitpulse <subcommand> --help` for details and examples."
+        ),
+    )
 
     p_scan = sub.add_parser(
         "scan", parents=[common],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         help="Print fleet state as JSON and exit",
-        description="Scan the fleet and emit machine-readable state on stdout.",
+        description=(
+            "Scan the fleet and emit machine-readable state on stdout.\n\n"
+            "This is the command for scripts and coding agents: it answers\n"
+            "\"which of my repos have unpushed work?\" in a single call."
+        ),
+        epilog=_SCAN_EPILOG,
     )
     fmt = p_scan.add_mutually_exclusive_group()
     fmt.add_argument(
@@ -103,8 +211,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_ctx = sub.add_parser(
         "context", parents=[common],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         help="Print fleet state as a Markdown context pack",
-        description="Render fleet state as Markdown sized for an LLM context window.",
+        description=(
+            "Render fleet state as Markdown sized for an LLM context window.\n\n"
+            "State-first and ordered by what needs action, so it stays useful\n"
+            "when pasted straight into a prompt or a standup note."
+        ),
+        epilog=_CONTEXT_EPILOG,
     )
     p_ctx.add_argument(
         "--max-repos", type=int, default=40, metavar="N",
@@ -113,8 +227,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_dig = sub.add_parser(
         "digest", parents=[common],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         help="Print an author activity digest as Markdown",
-        description="Summarise recent commit activity by author across the fleet.",
+        description=(
+            "Summarise recent commit activity by author across the fleet.\n\n"
+            "Answers \"what did I do\"; use `context` for \"what is the state now\"."
+        ),
+        epilog=_DIGEST_EPILOG,
     )
     p_dig.add_argument(
         "--since", type=str, default=None, metavar="SPEC",

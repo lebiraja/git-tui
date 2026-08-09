@@ -15,6 +15,11 @@ pip install gitpulse-tui        # or: pipx install gitpulse-tui
 gitpulse --version              # verify before relying on it
 ```
 
+If a flag or field documented here is missing, the installed copy is old.
+`gitpulse --check-update` reports whether a newer release exists and installs
+nothing. Do **not** run `gitpulse --update` unless the user asks for it — it
+modifies their environment.
+
 ## The command
 
 ```bash

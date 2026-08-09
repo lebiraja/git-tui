@@ -4,6 +4,26 @@ Project activity log. Newest on top.
 
 ---
 
+## [2026-08-09 16:45] — Added `gitpulse --update` self-upgrade
+
+**What:** `--update` checks PyPI for a newer release and upgrades in place;
+`--check-update` reports without installing. `gitpulse/update.py` detects the
+install channel (venv / pipx / npm wrapper / OS-managed Python) and either runs
+the correct command or prints it.
+
+**Why:** Requested. The complication is that GitPulse ships through two
+channels — the npm wrapper bootstraps its own venv at `~/.gitpulse/venv` and
+pins an exact `gitpulse-tui==X.Y.Z`, so a pip upgrade there is silently
+reverted on the next launch. PEP 668 interpreters must not be written to at
+all. A blind `pip install --upgrade` would have broken both.
+
+**State:** DONE — verified with a real 1.2.15 → 1.2.16 upgrade in a throwaway
+venv; 17 new tests (191 → 208), all offline (verified with `urlopen` blocked).
+
+**Next:** —
+
+---
+
 ## [2026-08-07 15:40] — Fleet overhaul: UI fixes, agent surface, release safety
 
 **What:** Single branch `feat/fleet-overhaul` closing GitHub issues #26–#37

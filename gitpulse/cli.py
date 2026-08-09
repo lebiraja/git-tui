@@ -35,6 +35,8 @@ examples:
   gitpulse context                    fleet state as Markdown, for an LLM prompt
   gitpulse digest --since 7d          what you committed in the last week
 
+  gitpulse --update                   check PyPI and upgrade to the latest release
+
 dashboard keys:
   /  filter repos          j / k or arrows  move            [ ]  switch tab
   r  rescan                Space / *        select / all    :    bulk actions
@@ -124,6 +126,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--version", action="version", version=f"gitpulse {__version__}"
+    )
+    parser.add_argument(
+        "--update", action="store_true", default=False,
+        help="Check PyPI for a newer release and upgrade in place",
+    )
+    parser.add_argument(
+        "--check-update", action="store_true", default=False,
+        help="Report whether a newer release exists, without installing it",
     )
 
     def add_common(target: argparse.ArgumentParser) -> None:
@@ -316,6 +326,13 @@ def main() -> None:
     """Console-script entry point."""
     parser = _build_parser()
     args = parser.parse_args()
+
+    # Update checks talk to the network and touch no repos, so handle them
+    # before config loading or anything that would launch the TUI.
+    if getattr(args, "update", False) or getattr(args, "check_update", False):
+        from .update import run_update
+
+        sys.exit(run_update(check_only=args.check_update))
 
     # Load config before anything reads scan roots or worker counts.
     if getattr(args, "config", None):

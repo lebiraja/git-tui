@@ -18,6 +18,11 @@ If this fails, GitPulse is not installed. Tell the user:
 `pip install gitpulse-tui` (or `pipx install gitpulse-tui`). Do not attempt to
 install it yourself unless asked.
 
+If a command fails in a way that suggests an old version (an unrecognised flag,
+a missing field), `gitpulse --check-update` reports whether a newer release
+exists without installing anything. **Do not run `gitpulse --update` unless the
+user asks** — it modifies their environment.
+
 ## The one command that matters
 
 ```bash

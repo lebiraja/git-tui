@@ -14,7 +14,7 @@ from datetime import datetime, timezone, timedelta
 # Package version — single source of truth
 # ---------------------------------------------------------------------------
 
-__version__ = "1.2.18"
+__version__ = "1.2.19"
 
 
 # ---------------------------------------------------------------------------

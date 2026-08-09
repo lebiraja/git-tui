@@ -159,3 +159,31 @@ npm's own suggested `npm install -g --allow-scripts=gitpulse-tui` fails with
 **Verified:** Same scenario now yields valid JSON (`repo_count 1300`) with the
 explanation on stderr. `tests/test_npm_wrapper.py` guards it — confirmed the
 test fails when `log()` is reverted to stdout.
+
+---
+
+## 2026-08-09 — install.sh alias broke when the checkout moved
+
+**Symptom:** `gitpulse` resolved to
+`/home/lebi/projects/git-tui/.venv/bin/python -m gitpulse` — a venv that no
+longer existed — shadowing a working `/usr/bin/gitpulse` from npm. The shell
+reported the alias, so `which gitpulse` looked fine while every invocation
+failed.
+
+**Root cause:** `install.sh:52` wrote `alias gitpulse="<abs path> -m gitpulse"`
+into `.bashrc`, `.zshrc`, and `.bash_profile`. An absolute path baked into rc
+files breaks silently when the repo is moved or deleted, takes precedence over
+any pip/pipx/npm install, and never applied to fish at all.
+
+**Fix:** `install.sh:48` — symlink the venv's console script into
+`~/.local/bin` instead, which works in bash, zsh, and fish, and dies with the
+checkout rather than outliving it. The installer also strips the old alias if
+it finds one, and warns when `~/.local/bin` is not on PATH.
+`uninstall.sh:46` removes the symlink, guarding with a literal `readlink` so it
+only deletes a link pointing into this checkout.
+
+**Verified:** Full install → uninstall cycle in a sandboxed `HOME`, including a
+pre-seeded stale alias (removed) and a foreign `~/.local/bin/gitpulse` pointing
+at `/usr/bin/gitpulse` (correctly left in place). The `readlink -f` variant was
+caught failing during that test — `.venv` is deleted first, so the link is
+dangling and `-f` returned empty, skipping removal.

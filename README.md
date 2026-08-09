@@ -68,12 +68,15 @@ The installer:
 - Checks your Python version (3.10+ required)
 - Creates a virtual environment automatically
 - Installs all dependencies
-- Adds the `gitpulse` command to your shell (`~/.zshrc` / `~/.bashrc`)
+- Symlinks `gitpulse` into `~/.local/bin` (works in bash, zsh, and fish)
 
-Then reload your shell:
-```bash
-source ~/.zshrc   # or source ~/.bashrc
-```
+If `~/.local/bin` is not already on your `PATH`, the installer tells you how to
+add it. Run `./uninstall.sh` to reverse all of it.
+
+> Earlier versions wrote a shell alias into `~/.bashrc` and `~/.zshrc` with an
+> absolute path to the checkout. That broke silently if the repo was moved or
+> deleted, and shadowed any pip/pipx/npm install of GitPulse. The installer now
+> removes that alias if it finds one.
 
 ## Usage
 

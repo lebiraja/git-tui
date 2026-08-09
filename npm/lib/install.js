@@ -20,8 +20,16 @@ const PYPI_PACKAGE = "gitpulse-tui";
 /** Error subclass carrying a pre-formatted, user-facing remediation message. */
 class InstallError extends Error {}
 
+/**
+ * Progress goes to stderr, never stdout.
+ *
+ * `gitpulse scan --json` guarantees that stdout carries only JSON, and this
+ * bootstrap can run mid-command the first time after an npm upgrade (npm may
+ * block the postinstall hook). Writing progress to stdout corrupts that output
+ * and breaks any consumer parsing it.
+ */
 function log(line) {
-  process.stdout.write(`${line}\n`);
+  process.stderr.write(`${line}\n`);
 }
 
 function readState() {
@@ -127,6 +135,18 @@ function ensurePythonPackage(opts) {
     if (state && state.installedVersion === targetVersion && venvPythonExists()) {
       return venvPython();
     }
+  }
+
+  // Reaching here mid-command means the postinstall hook did not run — npm
+  // blocks install scripts unless allow-scripts covers the package. Say so,
+  // rather than dumping install output with no explanation.
+  const state = readState();
+  if (state && state.installedVersion !== targetVersion) {
+    log(
+      `▸ GitPulse ${targetVersion} was installed, but its Python runtime is ` +
+        `still on ${state.installedVersion}.`,
+    );
+    log("  Finishing setup now (npm blocked the postinstall step) …");
   }
 
   // Locate a host interpreter to bootstrap the venv.

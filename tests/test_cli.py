@@ -146,3 +146,57 @@ class TestTopLevel:
         # Assert
         for name in ("scan", "context", "digest"):
             assert name in result.stdout
+
+
+class TestHelpText:
+    def test_main_help_shows_examples_and_keys(self):
+        # Act
+        result = run_cli("--help")
+
+        # Assert
+        assert "examples:" in result.stdout
+        assert "dashboard keys:" in result.stdout
+        assert "configuration:" in result.stdout
+
+    def test_main_help_separates_tui_only_options(self):
+        """--commits/--no-watch do nothing for the subcommands; say so."""
+        # Act
+        result = run_cli("--help")
+
+        # Assert
+        assert "dashboard options:" in result.stdout
+
+    def test_scan_help_documents_the_schema(self):
+        # Act
+        result = run_cli("scan", "--help")
+
+        # Assert
+        for field in ("schema_version", "repo_count", "errors[]", "unreadable"):
+            assert field in result.stdout
+
+    def test_scan_help_warns_that_unreadable_is_not_clean(self):
+        """The most dangerous misreading of the output deserves a warning."""
+        # Act
+        result = run_cli("scan", "--help")
+
+        # Assert
+        assert "NOT clean" in result.stdout
+
+    def test_every_subcommand_help_carries_examples(self):
+        for cmd in ("scan", "context", "digest"):
+            # Act
+            result = run_cli(cmd, "--help")
+
+            # Assert
+            assert "examples:" in result.stdout, f"{cmd} help has no examples"
+
+    def test_digest_help_lists_supported_time_specs(self):
+        # Act
+        result = run_cli("digest", "--help")
+
+        # Assert — every spec advertised must actually parse
+        from gitpulse.utils import parse_since
+
+        for spec in ("1d", "7d", "2w", "4h", "yesterday", "today"):
+            assert spec in result.stdout
+            parse_since(spec)

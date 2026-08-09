@@ -117,6 +117,29 @@ from gitpulse.api import scan_fleet
 unpushed = [r for r in scan_fleet("~/Projects") if r.ahead > 0]
 ```
 
+### Teaching your agent to use it
+
+**Claude Code** — install the bundled skill, and Claude will reach for GitPulse
+on its own whenever you ask about "my repos", "what haven't I pushed", or want
+a standup summary:
+
+```bash
+git clone https://github.com/lebiraja/gitpulse.git
+mkdir -p ~/.claude/skills
+cp -r gitpulse/skills/gitpulse ~/.claude/skills/gitpulse
+```
+
+Then just ask: *"which of my projects have uncommitted work?"*
+
+**Any other agent** (Cursor, Codex, Aider, …) — [`AGENTS.md`](./AGENTS.md) is a
+vendor-neutral description of the same CLI contract. Drop it in your project
+root, or paste it into your agent's rules/system prompt.
+
+Both documents cover the same ground: the JSON schema, how to narrow with
+`--dirty` / `--ahead`, and the failure modes worth knowing — chiefly that
+`"readable": false` means *unknown*, not clean, and that `ahead: 0` does not
+prove a branch is pushed when it has no upstream.
+
 ## Features
 
 - **Multi-repo dashboard** — Scans a directory tree and lists every local Git repo, sorted by most recent activity

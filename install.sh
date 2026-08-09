@@ -7,7 +7,6 @@ set -e
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$REPO_DIR/.venv"
-BIN="$VENV/bin/python"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -46,40 +45,48 @@ echo -e "${YELLOW}▸ Installing dependencies...${NC}"
 "$VENV/bin/pip" install --quiet -e "$REPO_DIR"
 echo -e "   ${GREEN}✓ Installed textual, rich, gitpython${NC}"
 
-# ── 4. Detect shell and add alias ──────────────────────────────────────────
-echo -e "${YELLOW}▸ Adding 'gitpulse' command to your shell...${NC}"
+# ── 4. Expose the `gitpulse` command ───────────────────────────────────────
+# The venv already provides a console script. Symlinking it into a directory
+# on PATH is better than writing an alias into rc files: an alias hardcodes an
+# absolute path that silently breaks if the checkout is moved or deleted, and
+# it shadows any other GitPulse install (pip, pipx, npm) for the whole shell.
+echo -e "${YELLOW}▸ Exposing the 'gitpulse' command...${NC}"
 
-ALIAS_LINE="alias gitpulse=\"$BIN -m gitpulse\""
+CONSOLE_SCRIPT="$VENV/bin/gitpulse"
+LINK_DIR="$HOME/.local/bin"
+LINK="$LINK_DIR/gitpulse"
 
-# Write to every rc file that exists (covers bash, zsh, and both at once)
-RC_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile")
+mkdir -p "$LINK_DIR"
+ln -sf "$CONSOLE_SCRIPT" "$LINK"
+echo -e "   ${GREEN}✓ Linked $LINK → .venv/bin/gitpulse${NC}"
 
-for RC in "${RC_FILES[@]}"; do
+# Remove aliases written by older versions of this installer; they point at an
+# absolute path and would take precedence over the symlink.
+for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
     [[ -f "$RC" ]] || continue
     if grep -q "alias gitpulse=" "$RC" 2>/dev/null; then
-        sed -i "s|alias gitpulse=.*|$ALIAS_LINE|" "$RC"
-        echo -e "   ${GREEN}✓ Updated alias in $(basename $RC)${NC}"
-    else
-        echo "" >> "$RC"
-        echo "# GitPulse TUI" >> "$RC"
-        echo "$ALIAS_LINE" >> "$RC"
-        echo -e "   ${GREEN}✓ Added alias to $(basename $RC)${NC}"
+        sed -i '/^# GitPulse TUI$/d; /alias gitpulse=/d' "$RC"
+        echo -e "   ${GREEN}✓ Removed the old alias from $(basename "$RC")${NC}"
     fi
 done
+
+if ! echo ":$PATH:" | grep -q ":$LINK_DIR:"; then
+    echo -e "   ${YELLOW}! $LINK_DIR is not on your PATH${NC}"
+    echo -e "     bash/zsh:  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+    echo -e "     fish:      fish_add_path ~/.local/bin"
+fi
 
 # ── 5. Done ────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}✅ GitPulse installed successfully!${NC}"
 echo ""
-echo -e "  ${BOLD}Reload your shell, then run:${NC}"
+echo -e "  ${BOLD}Run it with:${NC}"
 echo ""
 echo -e "   ${CYAN}gitpulse${NC}                         # scans current directory"
 echo -e "   ${CYAN}gitpulse --root /path/to/repos${NC}   # scans a custom dir"
 echo -e "   ${CYAN}gitpulse --commits 20${NC}            # show more commits"
 echo ""
-echo -e "  ${BOLD}Or reload now with:${NC}"
-echo -e "   ${CYAN}source ~/.bashrc${NC}   # bash users"
-echo -e "   ${CYAN}source ~/.zshrc${NC}    # zsh users"
+echo -e "  ${BOLD}Keybindings (press ? in the app for the full sheet):${NC}"
 echo ""
 echo -e "  ${BOLD}Global:${NC}       ↑↓ navigate  /  search  r  refresh  q  quit"
 echo -e "  ${BOLD}Status tab:${NC}   s  stage    u  unstage    a  stage-all    c  commit"

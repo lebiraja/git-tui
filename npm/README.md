@@ -67,9 +67,38 @@ gitpulse <args>
 The npm and PyPI versions are kept in lockstep by CI: npm `vX.Y.Z` always
 installs `gitpulse-tui==X.Y.Z`.
 
-If the npm `postinstall` step cannot complete (e.g. offline), it does **not**
-fail the install — the launcher automatically retries the setup the first time
-you run `gitpulse`.
+If the npm `postinstall` step cannot complete, it does **not** fail the install
+— the launcher retries the setup the first time you run `gitpulse`. Progress is
+printed to stderr, so `gitpulse scan --json > out.json` stays valid even when
+the bootstrap runs mid-command.
+
+### "1 package had install scripts blocked"
+
+Recent npm versions block install scripts by default, so you may see:
+
+```
+npm warn install-scripts   gitpulse-tui@X.Y.Z (postinstall: node scripts/postinstall.js)
+```
+
+**This is safe to ignore.** The Python runtime is set up automatically the next
+time you run `gitpulse` — you will see a one-line notice while it finishes.
+
+To let the postinstall run at install time instead, append the flag to a real
+install command:
+
+```bash
+npm install -g --allow-scripts=gitpulse-tui gitpulse-tui@latest
+```
+
+Note that `npm install -g --allow-scripts=gitpulse-tui` **on its own**, with no
+package named, fails with `Cannot destructure property 'name' of '.for'` — npm's
+own warning text omits the package argument.
+
+To allow it permanently:
+
+```bash
+npm config set allow-scripts=gitpulse-tui --location=user
+```
 
 ## Environment variables
 

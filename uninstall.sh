@@ -43,7 +43,30 @@ find "$REPO_DIR" -maxdepth 3 -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev
 find "$REPO_DIR" -maxdepth 3 -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 echo -e "   ${GREEN}✓ Cleaned build artifacts${NC}"
 
-# ── 3. Remove alias/PATH from shell rc files ───────────────────────────────
+# ── 3. Remove the console-script symlink ───────────────────────────────────
+echo -e "${YELLOW}▸ Removing the 'gitpulse' command...${NC}"
+
+LINK="$HOME/.local/bin/gitpulse"
+if [[ -L "$LINK" ]]; then
+    # Only remove a symlink that points into this checkout, so a pip/pipx
+    # install of gitpulse living at the same path is left alone.
+    #
+    # Read the link literally rather than with `readlink -f`: step 1 has
+    # already deleted .venv, so the link is dangling and -f would resolve to
+    # an empty string, causing this check to skip the very link it created.
+    TARGET="$(readlink "$LINK" 2>/dev/null || true)"
+    case "$TARGET" in
+        "$REPO_DIR"/*)
+            rm -f "$LINK"
+            echo -e "   ${GREEN}✓ Removed $LINK${NC}"
+            ;;
+        *)
+            echo -e "   ${YELLOW}! $LINK points outside this checkout — left in place${NC}"
+            ;;
+    esac
+fi
+
+# ── 4. Remove alias/PATH from shell rc files ───────────────────────────────
 echo -e "${YELLOW}▸ Removing shell configuration...${NC}"
 
 RC_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile")
@@ -62,7 +85,7 @@ for RC in "${RC_FILES[@]}"; do
     fi
 done
 
-# ── 4. Done ────────────────────────────────────────────────────────────────
+# ── 5. Done ────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}✅ GitPulse uninstalled successfully!${NC}"
 echo ""

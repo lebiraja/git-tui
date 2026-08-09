@@ -133,3 +133,57 @@ each list now passes a subtitle describing only itself ("Press s on a file to
 stage it", etc.).
 
 **Verified:** Screenshot against a repo with untracked files.
+
+---
+
+## 2026-08-09 — npm wrapper corrupted `gitpulse scan --json`
+
+**Symptom:** After `npm install -g gitpulse-tui@latest`, the first `gitpulse`
+command printed venv bootstrap logs before its real output. Piping that run —
+`gitpulse scan --json > fleet.json` — produced invalid JSON, breaking the
+documented contract that stdout carries only JSON.
+
+**Root cause:** npm blocks postinstall scripts by default now, so the Python
+venv stays on the previous version. The launcher self-heals on next run, but
+`log()` in `npm/lib/install.js:24` wrote progress to **stdout**, mixing it into
+the command's output. Reproduced by clearing `~/.gitpulse/state.json` and
+running `gitpulse scan --json` — `json.load` failed at char 0.
+
+**Fix:** `npm/lib/install.js:23` — `log()` now writes to stderr. Added a notice
+naming the version mismatch and the blocked postinstall, so a mid-command
+bootstrap explains itself instead of appearing as an unexplained wall of output.
+`npm/README.md` documents the "install scripts blocked" warning, including that
+npm's own suggested `npm install -g --allow-scripts=gitpulse-tui` fails with
+`Cannot destructure property 'name' of '.for'` when no package is named.
+
+**Verified:** Same scenario now yields valid JSON (`repo_count 1300`) with the
+explanation on stderr. `tests/test_npm_wrapper.py` guards it — confirmed the
+test fails when `log()` is reverted to stdout.
+
+---
+
+## 2026-08-09 — install.sh alias broke when the checkout moved
+
+**Symptom:** `gitpulse` resolved to
+`/home/lebi/projects/git-tui/.venv/bin/python -m gitpulse` — a venv that no
+longer existed — shadowing a working `/usr/bin/gitpulse` from npm. The shell
+reported the alias, so `which gitpulse` looked fine while every invocation
+failed.
+
+**Root cause:** `install.sh:52` wrote `alias gitpulse="<abs path> -m gitpulse"`
+into `.bashrc`, `.zshrc`, and `.bash_profile`. An absolute path baked into rc
+files breaks silently when the repo is moved or deleted, takes precedence over
+any pip/pipx/npm install, and never applied to fish at all.
+
+**Fix:** `install.sh:48` — symlink the venv's console script into
+`~/.local/bin` instead, which works in bash, zsh, and fish, and dies with the
+checkout rather than outliving it. The installer also strips the old alias if
+it finds one, and warns when `~/.local/bin` is not on PATH.
+`uninstall.sh:46` removes the symlink, guarding with a literal `readlink` so it
+only deletes a link pointing into this checkout.
+
+**Verified:** Full install → uninstall cycle in a sandboxed `HOME`, including a
+pre-seeded stale alias (removed) and a foreign `~/.local/bin/gitpulse` pointing
+at `/usr/bin/gitpulse` (correctly left in place). The `readlink -f` variant was
+caught failing during that test — `.venv` is deleted first, so the link is
+dangling and `-f` returned empty, skipping removal.

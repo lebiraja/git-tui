@@ -69,19 +69,27 @@ fi
 # ── 4. Remove alias/PATH from shell rc files ───────────────────────────────
 echo -e "${YELLOW}▸ Removing shell configuration...${NC}"
 
-RC_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile")
+# GNU sed takes `-i` with no argument; BSD/macOS sed requires an explicit
+# backup suffix, so `sed -i <script>` fails there with "invalid command code".
+# Edit via a temp file instead — portable everywhere. Writing back with `cat`
+# rather than `mv` keeps the original file's permissions and ownership.
+sed_delete() {
+    local script="$1" file="$2" tmp
+    tmp="$(mktemp)" || return 1
+    sed "$script" "$file" > "$tmp" && cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
+
+RC_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.zprofile")
 
 for RC in "${RC_FILES[@]}"; do
     [[ -f "$RC" ]] || continue
     if grep -q "gitpulse\|GitPulse TUI" "$RC" 2>/dev/null; then
         # Remove the GitPulse TUI comment line, the alias line, and the PATH line
-        sed -i '/# GitPulse TUI/d' "$RC"
-        sed -i '/alias gitpulse=/d' "$RC"
-        sed -i '/gitpulse.*PATH/d' "$RC"
-        # Also remove any blank line that was added before the alias block
-        # (safe: collapses multiple consecutive blank lines to one)
-        sed -i '/^$/N;/^\n$/d' "$RC"
-        echo -e "   ${GREEN}✓ Removed from $(basename $RC)${NC}"
+        sed_delete '/# GitPulse TUI/d; /alias gitpulse=/d; /gitpulse.*PATH/d' "$RC"
+        # Collapse the blank line the old installer left behind
+        sed_delete '/^$/N;/^\n$/D' "$RC"
+        echo -e "   ${GREEN}✓ Removed from $(basename "$RC")${NC}"
     fi
 done
 

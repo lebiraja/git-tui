@@ -218,7 +218,37 @@ Press `?` inside the app for the full cheat sheet.
 ## Requirements
 
 - Python 3.10+
-- Linux / macOS
+- git on your `PATH`
+
+| Platform | Supported install methods |
+|---|---|
+| Linux | `pip` / `pipx`, `npm`, `./install.sh` |
+| macOS | `pip` / `pipx`, `npm`, `./install.sh` |
+| Windows | `pip` / `pipx`, `npm` |
+
+On Windows, use `pipx install gitpulse-tui` (or npm). `install.sh` is a bash
+script for source installs and is not supported there — the packaged installs
+require no shell scripting and work on all three platforms.
+
+Windows terminal note: use **Windows Terminal** rather than the legacy console
+host. Textual needs a terminal with modern ANSI support, and `conhost.exe`
+renders the dashboard poorly.
+
+### If `gitpulse` runs the wrong version
+
+Almost always another copy earlier on your `PATH`, or a leftover shell alias
+from an old source install:
+
+```bash
+type -a gitpulse          # bash/zsh — shows aliases and every PATH match
+where.exe gitpulse        # Windows
+```
+
+Remove whichever one is winning (`pip uninstall gitpulse-tui`,
+`npm uninstall -g gitpulse-tui`, `pipx uninstall gitpulse-tui`, or delete the
+stale `alias gitpulse=` line from your shell rc file), then open a new
+terminal. `./install.sh` now detects this case and tells you which command to
+run.
 
 ## Documentation
 

@@ -93,13 +93,33 @@ for RC in "${RC_FILES[@]}"; do
     fi
 done
 
-# ── 5. Done ────────────────────────────────────────────────────────────────
+# ── 5. Report anything that still answers to `gitpulse` ────────────────────
+# A leftover pip/pipx/npm install is not this script's to remove, but leaving
+# the user to discover it themselves is how #43 happened.
+REMAINING="$(command -v gitpulse 2>/dev/null || true)"
+if [[ -n "$REMAINING" ]]; then
+    echo ""
+    echo -e "${RED}▸ Note: 'gitpulse' still resolves to:${NC}"
+    echo -e "   ${CYAN}$REMAINING${NC}"
+    echo -e "   That is a separate installation. Remove it with one of:"
+    case "$REMAINING" in
+        *"/.local/pipx/"*|*"/pipx/venvs/"*)
+            echo -e "     ${CYAN}pipx uninstall gitpulse-tui${NC}" ;;
+        *"/node_modules/"*|*"/npm/"*)
+            echo -e "     ${CYAN}npm uninstall -g gitpulse-tui${NC}" ;;
+        *)
+            echo -e "     ${CYAN}pip uninstall gitpulse-tui${NC}"
+            echo -e "     ${CYAN}npm uninstall -g gitpulse-tui${NC}"
+            echo -e "     ${CYAN}pipx uninstall gitpulse-tui${NC}" ;;
+    esac
+fi
+
+# ── 6. Done ────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}✅ GitPulse uninstalled successfully!${NC}"
 echo ""
-echo -e "  Reload your shell to apply changes:"
-echo -e "   ${CYAN}source ~/.bashrc${NC}   # bash users"
-echo -e "   ${CYAN}source ~/.zshrc${NC}    # zsh users"
+echo -e "  Open a new terminal to clear any 'gitpulse' alias still loaded"
+echo -e "  in this session."
 echo ""
 echo -e "  The repo folder ${CYAN}$REPO_DIR${NC} was kept."
 echo -e "  To fully remove it:  ${CYAN}rm -rf $REPO_DIR${NC}"

@@ -187,3 +187,26 @@ pre-seeded stale alias (removed) and a foreign `~/.local/bin/gitpulse` pointing
 at `/usr/bin/gitpulse` (correctly left in place). The `readlink -f` variant was
 caught failing during that test — `.venv` is deleted first, so the link is
 dangling and `-f` returned empty, skipping removal.
+
+---
+
+## 2026-08-10 — install.sh / uninstall.sh failed on macOS (GNU-only `sed -i`)
+
+**Symptom:** Reported via #43. On macOS the installer's alias cleanup aborts
+with `sed: 1: "...": invalid command code`, so a stale `alias gitpulse=` from an
+older source install is never removed and keeps shadowing the real binary.
+
+**Root cause:** Both scripts used `sed -i '<script>' "$FILE"`. GNU sed accepts
+`-i` with no argument; BSD/macOS sed reads the next token as the backup suffix
+and then treats the filename as the script. Every in-place edit in both scripts
+was affected.
+
+**Fix:** `install.sh:67` and `uninstall.sh:73` — added a `sed_delete()` helper
+that edits via `mktemp` and writes back with `cat`, which is portable and also
+preserves the file's permissions and ownership (unlike `mv`). Also extended the
+rc-file list to include `~/.zprofile`, which macOS zsh users commonly use.
+
+**Verified:** Ran both scripts with a BSD-style `sed` shim first on PATH that
+rejects bare `-i` the way macOS does — alias removed cleanly, `PATH` line and
+file permissions intact. `tests/test_shell_scripts.py` guards it; confirmed the
+test fails when `sed -i` is reintroduced.

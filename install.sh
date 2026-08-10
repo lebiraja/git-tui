@@ -62,10 +62,21 @@ echo -e "   ${GREEN}✓ Linked $LINK → .venv/bin/gitpulse${NC}"
 
 # Remove aliases written by older versions of this installer; they point at an
 # absolute path and would take precedence over the symlink.
-for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
+#
+# GNU sed takes `-i` with no argument; BSD/macOS sed requires an explicit
+# (possibly empty) backup suffix, so `sed -i <script>` fails there with
+# "invalid command code". Edit to a temp file instead — portable everywhere.
+sed_delete() {
+    local script="$1" file="$2" tmp
+    tmp="$(mktemp)" || return 1
+    sed "$script" "$file" > "$tmp" && cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
+
+for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.zprofile"; do
     [[ -f "$RC" ]] || continue
     if grep -q "alias gitpulse=" "$RC" 2>/dev/null; then
-        sed -i '/^# GitPulse TUI$/d; /alias gitpulse=/d' "$RC"
+        sed_delete '/^# GitPulse TUI$/d; /alias gitpulse=/d' "$RC"
         echo -e "   ${GREEN}✓ Removed the old alias from $(basename "$RC")${NC}"
     fi
 done

@@ -81,8 +81,15 @@ function main() {
       }
     }
   };
-  process.on("SIGINT", () => forward("SIGINT"));
-  process.on("SIGTERM", () => forward("SIGTERM"));
+  // Windows has no real POSIX signals; Node emulates SIGINT for Ctrl+C but
+  // registering SIGTERM/SIGHUP there can throw, so guard each registration.
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    try {
+      process.on(signal, () => forward(signal));
+    } catch (_) {
+      /* unsupported on this platform */
+    }
+  }
 
   child.on("error", (err) => {
     if (err && err.code === "ENOENT") {

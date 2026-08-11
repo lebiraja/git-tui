@@ -29,6 +29,58 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint the installer scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck install.sh uninstall.sh
+
+  # The installers only ever run on a user's own machine, so exercise them on
+  # both a GNU userland and a BSD/macOS one. Issue #43 was a GNU-only `sed -i`
+  # that no Linux job could have caught.
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Seed a stale alias from the old installer
+        run: |
+          printf '# GitPulse TUI\nalias gitpulse="/dead/path/python -m gitpulse"\n' >> "$HOME/.bashrc"
+          printf '# GitPulse TUI\nalias gitpulse="/dead/path/python -m gitpulse"\n' >> "$HOME/.zshrc"
+
+      - name: Run the installer
+        run: ./install.sh
+
+      - name: The stale alias must be gone
+        run: |
+          if grep -q "alias gitpulse=" "$HOME/.bashrc" "$HOME/.zshrc"; then
+            echo "installer left a stale alias behind"; exit 1
+          fi
+
+      - name: The installed command must run
+        run: "$HOME/.local/bin/gitpulse --version"
+
+      - name: Run the uninstaller
+        run: echo y | ./uninstall.sh
+
+      - name: Everything must be gone
+        run: |
+          test ! -e "$HOME/.local/bin/gitpulse" || { echo "symlink survived"; exit 1; }
+          test ! -d .venv || { echo ".venv survived"; exit 1; }
+
   package:
     runs-on: ubuntu-latest
     steps:

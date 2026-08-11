@@ -44,3 +44,31 @@ class TestShellPortability:
             ["bash", "-n", str(script)], capture_output=True, text=True
         )
         assert result.returncode == 0, result.stderr
+
+    def test_no_gnu_only_readlink_f(self, script):
+        """`readlink -f` is absent on stock macOS (needs coreutils)."""
+        offenders = [
+            f"{script.name}:{n}: {ln.strip()}"
+            for n, ln in enumerate(script.read_text().splitlines(), 1)
+            if re.search(r"\breadlink\s+-f\b", ln) and not ln.strip().startswith("#")
+        ]
+        assert not offenders, "readlink -f is unavailable on stock macOS:\n  " + "\n  ".join(offenders)
+
+    def test_no_gnu_only_grep_flags(self, script):
+        """`grep -P` (PCRE) is not compiled into BSD grep."""
+        offenders = [
+            f"{script.name}:{n}"
+            for n, ln in enumerate(script.read_text().splitlines(), 1)
+            if re.search(r"\bgrep\s+(-\w*P|--perl-regexp)", ln)
+            and not ln.strip().startswith("#")
+        ]
+        assert not offenders, f"grep -P is GNU-only: {offenders}"
+
+    def test_venv_bin_dir_is_not_hardcoded(self, script):
+        """Windows venvs use Scripts/, not bin/ — detect, do not assume."""
+        text = script.read_text()
+        if "$VENV/bin" not in text:
+            return  # nothing hardcoded
+        assert "Scripts" in text, (
+            "hardcodes $VENV/bin without a Windows Scripts/ fallback"
+        )

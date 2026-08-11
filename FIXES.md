@@ -210,3 +210,39 @@ rc-file list to include `~/.zprofile`, which macOS zsh users commonly use.
 rejects bare `-i` the way macOS does — alias removed cleanly, `PATH` line and
 file permissions intact. `tests/test_shell_scripts.py` guards it; confirmed the
 test fails when `sed -i` is reintroduced.
+
+---
+
+## 2026-08-10 — Installer reported success while a stale copy shadowed it
+
+**Symptom:** The root cause behind #43. `install.sh` printed
+"✅ GitPulse installed successfully!" even when another `gitpulse` earlier on
+`PATH` — or an alias in the live shell — would run instead. The user then sees
+an old version and reasonably concludes the install failed.
+
+**Root cause:** The installer never verified its own result. It created the
+symlink and declared victory without checking what `gitpulse` actually
+resolved to.
+
+**Fix:** `install.sh:93` — a verification step that resolves `gitpulse`,
+compares it to the symlink just created, and on mismatch prints the offending
+path plus the exact removal command for that install type (pipx / npm / pip /
+plain file). The closing banner now reports ⚠ rather than ✅ when shadowed or
+when `~/.local/bin` is off `PATH`. It also runs `gitpulse --version` to prove
+the venv works, and warns when an alias is still loaded in the current shell.
+`uninstall.sh:96` reports any `gitpulse` that still resolves afterwards.
+
+**Also fixed in the same pass:**
+- Python discovery probed only `python3`; now tries `python3`/`python`/`py` and
+  asks the interpreter for its own version instead of parsing strings.
+- venv and pip failures were swallowed by `set -e`; both now print the real
+  error plus the fix (`apt install python3-venv` for the common Debian case).
+- `$VENV/bin` was hardcoded; now detects `Scripts/` for Git Bash on Windows.
+- `npm/bin/gitpulse.js` registered `SIGTERM`/`SIGHUP` unconditionally, which
+  can throw on Windows; each registration is now guarded.
+
+**Verified:** Sandboxed installs covering a stale binary earlier on `PATH`, a
+clean install, `~/.local/bin` missing from `PATH`, no Python, a Python without
+`venv`, and paths containing spaces. shellcheck clean. CI now runs shellcheck
+and executes install + uninstall on **both ubuntu-latest and macos-latest** —
+the macOS job is what would have caught #43 before release.
